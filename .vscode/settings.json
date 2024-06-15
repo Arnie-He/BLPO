@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "algos"
+    ],
+    "python.analysis.typeCheckingMode": "off"
+}
