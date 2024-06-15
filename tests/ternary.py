@@ -24,9 +24,18 @@ outputs = jnp.array([
     [1, 0],
 ], dtype=jnp.float32)
 
-# Create linear model
+# MLP model with 1 hidden layer
+class MLP(nn.Module):
+    @nn.compact
+    def __call__(self, input):
+        out = nn.Dense(4)(input)
+        out = nn.relu(out)
+        out = nn.Dense(2)(out)
+        return out
+
+# Create MLP model
 init_key = random.key(0)
-model = nn.Dense(2)
+model = MLP()
 params = model.init(init_key, jnp.empty((3,)))
 
 # Define loss function
@@ -49,8 +58,6 @@ for epoch in range(10001):
         print(f"[{epoch}] Loss: {loss}")
 
 # Display final output
-print("Final params:")
-print(params)
 print("Final output:")
 print(model.apply(params, inputs))
 print(outputs)
