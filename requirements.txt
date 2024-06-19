@@ -1,3 +1,5 @@
+distrax==0.1.5
 flax==0.8.4
 gymnax==0.0.8
 jax[cpu]==0.4.29
+optax==0.2.2
