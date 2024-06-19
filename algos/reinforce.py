@@ -12,7 +12,8 @@ import optax
 # Configuration parameters
 
 NUM_UPDATES = 100
-ROLLOUT_LEN = 2
+ROLLOUT_LEN = 25
+DISCOUNT_RATE = 0.99
 LEARNING_RATE = 0.001
 ADAM_EPS = 1e-5
 
@@ -85,7 +86,7 @@ def run_rollout(rng_key):
         )
 
         next_step = (train_state, next_state, next_observation, rng_key)
-        return next_step, transition
+        return (next_step, transition)
 
     s, transitions = jax.lax.scan(
         step,
@@ -94,5 +95,26 @@ def run_rollout(rng_key):
     )
     return transitions
 
+def calc_discounted_rewards(transitions):
+    """Calculates the cumulative discounted reward at each time step."""
+    def calc_reward(total, transition):
+        """Adds the current reward to the total and applies the discount."""
+        total = jax.lax.select(
+            transition.done,
+            transition.reward,
+            transition.reward + DISCOUNT_RATE * total,
+        )
+        return (total, total)
+
+    c, rewards = jax.lax.scan(
+        calc_reward,
+        init=0,
+        xs=transitions,
+        reverse=True
+    )
+    return rewards
+
 transitions = run_rollout(rng_key)
 print(transitions)
+rewards = calc_discounted_rewards(transitions)
+print(rewards)
