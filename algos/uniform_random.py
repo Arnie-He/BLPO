@@ -50,10 +50,10 @@ env, env_params = gymnax.make(ENV)
 random_policy = RandomPolicy(env.action_space(env_params).n)
 rewards = []
 
-# Run 1000 rollouts of 100 steps each
-for r in range(1000):
+# Run 100 rollouts of 1000 steps each
+for r in range(100):
     random_key, rollout_key = random.split(random_key, 2)
-    reward, done = run_rollout(random_policy, env_params, 100, rollout_key)
+    reward, done = run_rollout(random_policy, env_params, 1000, rollout_key)
     assert jnp.all(done[reward != 0])
     rewards.append(reward[reward != 0])
 
