@@ -97,7 +97,10 @@ def run_rollout(train_state, rng_key):
 
 @jax.jit
 def calc_discounted_rewards(transitions):
-    """Calculates the cumulative discounted reward at each time step."""
+    """
+    Calculates the cumulative discounted reward at each time step. The rewards are
+    normalized to reduce variance with a rudimentary baseline.
+    """
     def calc_reward(total, transition):
         """Adds the current reward to the total and applies the discount."""
         total = jax.lax.select(
