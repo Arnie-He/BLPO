@@ -7,6 +7,7 @@ from flax.training.train_state import TrainState
 import gymnax
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import optax
 
 # Configuration parameters
@@ -167,9 +168,27 @@ print("Optimal average reward:", optimal_average)
 
 average_rewards = []
 losses = []
-for u in range(NUM_UPDATES):
+for u in range(NUM_UPDATES + 1):
     train_state, average_reward, loss, rng_key = run_update(train_state, rng_key)
     average_rewards.append(float(average_reward))
     losses.append(float(loss))
     if u % 50 == 0:
         print(f"[Update {u}]: Average reward {average_reward}")
+
+# Plot rewards and losses
+
+reward_figure, reward_axes = plt.subplots()
+reward_axes.plot(
+    list(range(1, len(average_rewards) + 1)),
+    average_rewards,
+)
+reward_axes.set_title("REINFORCE average reward")
+reward_figure.savefig("./charts/reinforce_reward.png")
+
+loss_figure, loss_axes = plt.subplots()
+loss_axes.plot(
+    list(range(1, len(losses) + 1)),
+    losses,
+)
+loss_axes.set_title("REINFORCE loss")
+loss_figure.savefig("./charts/reinforce_loss.png")
