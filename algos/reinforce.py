@@ -159,14 +159,6 @@ def run_update(train_state, rng_key):
 
     return (train_state, average_reward, loss, rng_key)
 
-# Calculate the optimal average reward as a benchmark
-
-optimal_rewards = [1] * 500
-for r in reversed(range(len(optimal_rewards) - 1)):
-    optimal_rewards[r] += DISCOUNT_RATE * optimal_rewards[r + 1]
-optimal_average = jnp.mean(jnp.array(optimal_rewards))
-print("Optimal average reward:", optimal_average)
-
 # Run the training loop
 
 average_rewards = []
@@ -177,6 +169,15 @@ for u in range(NUM_UPDATES + 1):
     losses.append(float(loss))
     if u % 50 == 0:
         print(f"[Update {u}]: Average reward {average_reward}")
+
+# Calculate the cartpole optimal average reward as a benchmark
+
+if ENV == "CartPole-v1":
+    optimal_rewards = [1] * 500
+    for r in reversed(range(len(optimal_rewards) - 1)):
+        optimal_rewards[r] += DISCOUNT_RATE * optimal_rewards[r + 1]
+    optimal_average = jnp.mean(jnp.array(optimal_rewards))
+    print("Optimal average reward:", optimal_average)
 
 # Plot rewards and losses
 
