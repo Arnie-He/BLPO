@@ -11,8 +11,8 @@ import optax
 
 # Configuration parameters
 
-NUM_UPDATES = 100
-ROLLOUT_LEN = 25
+NUM_UPDATES = 1000
+ROLLOUT_LEN = 2000
 DISCOUNT_RATE = 0.99
 LEARNING_RATE = 0.001
 ADAM_EPS = 1e-5
@@ -39,7 +39,6 @@ class Transition:
     action: jnp.ndarray
     reward: jnp.ndarray
     done: jnp.ndarray
-    log_prob: jnp.ndarray
 
 # Create actor model and initialize parameters
 
@@ -53,6 +52,7 @@ actor_params = actor.init(init_key, empty_observation)
 print("Initialized actor parameters")
 print("Observation shape:", empty_observation.shape)
 print("Action space:", actor.num_actions)
+print()
 
 # Create a train state
 
@@ -62,27 +62,26 @@ train_state = TrainState.create(
     tx=optax.adam(LEARNING_RATE, eps=ADAM_EPS),
 )
 
-def run_rollout(rng_key):
+@jax.jit
+def run_rollout(train_state, rng_key):
     """Collects a policy rollout with a fixed number of steps."""
     rng_key, reset_key = jax.random.split(rng_key, 2)
     observation, env_state = env.reset(reset_key, env_params)
 
     def step(rollout_state, i):
         """Advances the environment by 1 step by sampling from the policy."""
+        # Sample action
         train_state, env_state, observation, rng_key = rollout_state
         rng_key, action_key, step_key = jax.random.split(rng_key, 3)
-
-        # Sample action
         action_dist = actor.apply(train_state.params, observation)
         action = action_dist.sample(seed=action_key)
-        log_prob = action_dist.log_prob(action)
 
         # Run environment step
         next_observation, next_state, reward, done, i = env.step(
             step_key, env_state, action, env_params,
         )
         transition = Transition(
-            observation, action, reward, done, log_prob,
+            observation, action, reward, done,
         )
 
         next_step = (train_state, next_state, next_observation, rng_key)
@@ -95,6 +94,7 @@ def run_rollout(rng_key):
     )
     return transitions
 
+@jax.jit
 def calc_discounted_rewards(transitions):
     """Calculates the cumulative discounted reward at each time step."""
     def calc_reward(total, transition):
@@ -106,15 +106,70 @@ def calc_discounted_rewards(transitions):
         )
         return (total, total)
 
-    c, rewards = jax.lax.scan(
+    s, rewards = jax.lax.scan(
         calc_reward,
-        init=0,
+        init=jnp.float32(0),
         xs=transitions,
-        reverse=True
+        reverse=True,
     )
-    return rewards
+    average_reward = jnp.mean(rewards)
+    rewards = rewards - jnp.mean(rewards)
+    rewards = rewards / jnp.std(rewards)
 
-transitions = run_rollout(rng_key)
-print(transitions)
-rewards = calc_discounted_rewards(transitions)
-print(rewards)
+    return (rewards, average_reward)
+
+@jax.jit
+def calc_episode_mask(transitions):
+    """Calculates a mask that is 1 if a transition is part of a full trajectory and 0 otherwise."""
+    s, mask = jax.lax.scan(
+        lambda prev, transition: (prev | transition.done,) * 2,
+        init=jnp.int8(0),
+        xs=transitions,
+        reverse=True,
+    )
+    return mask
+
+@jax.jit
+def update_actor(train_state, transitions, rewards, episode_mask):
+    """Calculates and applies the REINFORCE estimator gradient at each time step."""
+    def reinforce_loss(params, transitions, rewards, episode_mask):
+        """Calculates the REINFORCE estimator on a batch of transitions."""
+        action_dists = actor.apply(params, transitions.observation)
+        log_probs = action_dists.log_prob(transitions.action)
+        reinforce_losses = -log_probs * rewards * episode_mask
+        return jnp.sum(reinforce_losses) / jnp.sum(episode_mask)
+
+    reinforce_grad = jax.value_and_grad(reinforce_loss)
+    loss, grads = reinforce_grad(train_state.params, transitions, rewards, episode_mask)
+    train_state = train_state.apply_gradients(grads=grads)
+    return (train_state, loss)
+
+@jax.jit
+def run_update(train_state, rng_key):
+    """Runs an iteration of the training loop by sampling trajectories and applying policy gradients."""
+    rng_key, rollout_key = jax.random.split(rng_key, 2)
+    transitions = run_rollout(train_state, rollout_key)
+    rewards, average_reward = calc_discounted_rewards(transitions)
+    episode_mask = calc_episode_mask(transitions)
+    train_state, loss = update_actor(train_state, transitions, rewards, episode_mask)
+
+    return (train_state, average_reward, loss, rng_key)
+
+# Calculate the optimal average reward as a benchmark
+
+optimal_rewards = [1] * 500
+for r in reversed(range(len(optimal_rewards) - 1)):
+    optimal_rewards[r] += DISCOUNT_RATE * optimal_rewards[r + 1]
+optimal_average = jnp.mean(jnp.array(optimal_rewards))
+print("Optimal average reward:", optimal_average)
+
+# Run the training loop
+
+average_rewards = []
+losses = []
+for u in range(NUM_UPDATES):
+    train_state, average_reward, loss, rng_key = run_update(train_state, rng_key)
+    average_rewards.append(float(average_reward))
+    losses.append(float(loss))
+    if u % 50 == 0:
+        print(f"[Update {u}]: Average reward {average_reward}")
