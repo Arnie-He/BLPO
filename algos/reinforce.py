@@ -10,35 +10,42 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import optax
+from typing import Sequence
 
 # Configuration parameters
 
 params = {
     "cartpole": {
-        "hidden_sizes": (50, 20),
-        "num_updates": 1000,
-        "batch_count": 50,
+        "hidden_sizes": (30, 15),
+        "num_updates": 500,
+        "batch_count": 25,
         "rollout_len": 2000,
+        "discount_rate": 0.99,
+        "learning_rate": 0.002,
     },
     "catch": {
-        "hidden_sizes": (50, 20),
+        "hidden_sizes": (30, 15),
         "num_updates": 1000,
         "batch_count": 50,
         "rollout_len": 1000,
+        "discount_rate": 0.99,
+        "learning_rate": 0.002,
     },
     "breakout": {
         "hidden_sizes": (400, 100),
-        "num_updates": 2000,
+        "num_updates": 1000,
         "batch_count": 50,
-        "rollout_len": 40000,
+        "rollout_len": 20000,
+        "discount_rate": 0.995,
+        "learning_rate": 0.001,
     }
 }
 
 NUM_UPDATES = params[ENV_KEY]["num_updates"]
 BATCH_COUNT = params[ENV_KEY]["batch_count"]
 ROLLOUT_LEN = params[ENV_KEY]["rollout_len"]
-DISCOUNT_RATE = 0.99
-LEARNING_RATE = 0.001
+DISCOUNT_RATE = params[ENV_KEY]["discount_rate"]
+LEARNING_RATE = params[ENV_KEY]["learning_rate"]
 ADAM_EPS = 1e-5
 
 class Actor(nn.Module):
@@ -46,14 +53,15 @@ class Actor(nn.Module):
     A policy network with 3 hidden layers that outputs logits for each action. The logits
     are wrapped in a categorical distribution that is returned from each call.
     """
+    hidden_sizes: Sequence[int]
     num_actions: int
 
     @nn.compact
     def __call__(self, input):
-        out = nn.Dense(params[ENV_KEY]["hidden_sizes"][0])(input)
-        out = nn.relu(out)
-        out = nn.Dense(params[ENV_KEY]["hidden_sizes"][1])(out)
-        out = nn.relu(out)
+        out = input
+        for layer in self.hidden_sizes:
+            out = nn.Dense(layer)(out)
+            out = nn.relu(out)
         out = nn.Dense(self.num_actions)(out)
         return Categorical(out)
 
@@ -69,7 +77,8 @@ class Transition:
 rng_key, init_key = jax.random.split(jax.random.key(SEED), 2)
 env, env_params = gymnax.make(ENV)
 
-actor = Actor(env.action_space(env_params).n)
+num_actions = env.action_space(env_params).n
+actor = Actor(params[ENV_KEY]["hidden_sizes"], num_actions)
 empty_observation = jnp.empty(env.observation_space(env_params).shape).ravel()
 actor_params = actor.init(init_key, empty_observation)
 
