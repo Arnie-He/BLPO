@@ -27,9 +27,9 @@ params = {
     },
 }
 
-NUM_UPDATES = params[ENV_KEY]["num_updates"]
+NUM_UPDATES = 1#params[ENV_KEY]["num_updates"]
 BATCH_COUNT = params[ENV_KEY]["batch_count"]
-ROLLOUT_LEN = params[ENV_KEY]["rollout_len"]
+ROLLOUT_LEN = 20#params[ENV_KEY]["rollout_len"]
 DISCOUNT_RATE = params[ENV_KEY]["discount_rate"]
 ACTOR_RATE = params[ENV_KEY]["actor_learning_rate"]
 CRITIC_RATE = params[ENV_KEY]["critic_learning_rate"]
@@ -102,3 +102,39 @@ critic_state = TrainState.create(
     params=critic_params,
     tx=optax.adam(CRITIC_RATE, eps=ADAM_EPS),
 )
+
+def run_rollout(actor_state, rng_key):
+    """Collects an actor policy rollout with a fixed number of steps."""
+    rng_key, reset_key = jax.random.split(rng_key, 2)
+    observation, env_state = env.reset(reset_key, env_params)
+    observation = observation.ravel()
+
+    def step(rollout_state, i):
+        """Advances the environment by 1 step by sampling from the policy."""
+        # Sample action
+        actor_state, env_state, observation, rng_key = rollout_state
+        rng_key, action_key, step_key = jax.random.split(rng_key, 3)
+        action_dist = actor.apply(actor_state.params, observation)
+        action = action_dist.sample(seed=action_key)
+
+        # Run environment step
+        next_observation, next_state, reward, done, i = env.step(
+            step_key, env_state, action, env_params,
+        )
+        next_observation = next_observation.ravel()
+        transition = Transition(
+            observation, action, reward, done,
+        )
+
+        next_step = (actor_state, next_state, next_observation, rng_key)
+        return (next_step, transition)
+
+    s, transitions = jax.lax.scan(
+        step,
+        init=(actor_state, env_state, observation, rng_key),
+        length=ROLLOUT_LEN,
+    )
+    return transitions
+
+transitions = run_rollout(actor_state, rng_key)
+print(transitions)

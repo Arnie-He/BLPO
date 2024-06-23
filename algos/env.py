@@ -9,4 +9,4 @@ key = "cartpole"
 
 ENV = names[key]
 ENV_KEY = key
-SEED = 0
+SEED = 2
