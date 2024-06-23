@@ -1,4 +1,4 @@
-from env import ENV, SEED
+from env import ENV, ENV_KEY, SEED
 
 from distrax import Categorical
 import flax
@@ -213,13 +213,13 @@ reward_axes.plot(
     list(range(1, len(average_rewards) + 1)),
     average_rewards,
 )
-reward_axes.set_title("REINFORCE average reward")
-reward_figure.savefig("./charts/reinforce_reward.png")
+reward_axes.set_title(f"[{ENV}] REINFORCE average reward")
+reward_figure.savefig(f"./charts/reinforce/{ENV_KEY}_reward.png")
 
 loss_figure, loss_axes = plt.subplots()
 loss_axes.plot(
     list(range(1, len(losses) + 1)),
     losses,
 )
-loss_axes.set_title("REINFORCE loss")
-loss_figure.savefig("./charts/reinforce_loss.png")
+loss_axes.set_title(f"[{ENV}] REINFORCE loss")
+loss_figure.savefig(f"./charts/reinforce/{ENV_KEY}_loss.png")
