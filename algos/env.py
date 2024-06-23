@@ -1,2 +1,2 @@
-ENV = "CartPole-v1"
+ENV = "Catch-bsuite"
 SEED = 0

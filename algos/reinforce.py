@@ -4,6 +4,7 @@ from distrax import Categorical
 import flax
 from flax import linen as nn
 from flax.training.train_state import TrainState
+import functools
 import gymnax
 import jax
 import jax.numpy as jnp
@@ -13,6 +14,7 @@ import optax
 # Configuration parameters
 
 NUM_UPDATES = 1000
+BATCH_COUNT = 50
 ROLLOUT_LEN = 2000
 DISCOUNT_RATE = 0.99
 LEARNING_RATE = 0.001
@@ -176,16 +178,33 @@ def run_update(train_state, rng_key):
     average_reward = jnp.sum(total_rewards * transitions.done) / jnp.sum(transitions.done)
     return (train_state, average_reward, loss, rng_key)
 
+@functools.partial(jax.jit, static_argnums=2)
+def run_batch(train_state, rng_key, batch_count):
+    """Trains the model for a batch of updates."""
+    def run_once(batch_state, x):
+        """Runs an update and carries over the train state."""
+        train_state, rng_key = batch_state
+        train_state, average_reward, loss, rng_key = run_update(train_state, rng_key)
+        return ((train_state, rng_key), (average_reward, loss))
+
+    batch_state, results = jax.lax.scan(
+        run_once,
+        init=(train_state, rng_key),
+        length=batch_count,
+    )
+    train_state, rng_key = batch_state
+    average_rewards, losses = results
+    return (train_state, rng_key, average_rewards, losses)
+
 # Run the training loop
 
 average_rewards = []
 losses = []
-for u in range(NUM_UPDATES + 1):
-    train_state, average_reward, loss, rng_key = run_update(train_state, rng_key)
-    average_rewards.append(float(average_reward))
-    losses.append(float(loss))
-    if u % 50 == 0:
-        print(f"[Update {u}]: Average reward {average_reward}")
+for u in range(int(NUM_UPDATES / BATCH_COUNT)):
+    train_state, rng_key, batch_rewards, batch_losses = run_batch(train_state, rng_key, BATCH_COUNT)
+    average_rewards += [float(r) for r in batch_rewards]
+    losses += [float(l) for l in batch_losses]
+    print(f"[Update {(u + 1) * BATCH_COUNT}]: Average reward {batch_rewards[-1]}")
 
 # Plot rewards and losses
 
