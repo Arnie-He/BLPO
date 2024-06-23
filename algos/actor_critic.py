@@ -89,3 +89,16 @@ print("Initialized actor parameters")
 print("Observation shape:", empty_observation.shape)
 print("Action space:", num_actions)
 print()
+
+# Create actor and critic train states
+
+actor_state = TrainState.create(
+    apply_fn=actor.apply,
+    params=actor_params,
+    tx=optax.adam(ACTOR_RATE, eps=ADAM_EPS),
+)
+critic_state = TrainState.create(
+    apply_fn=critic.apply,
+    params=critic_params,
+    tx=optax.adam(CRITIC_RATE, eps=ADAM_EPS),
+)
