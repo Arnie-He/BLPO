@@ -67,24 +67,25 @@ class Actor(nn.Module):
 
 @flax.struct.dataclass
 class Transition:
+    """A data class that stores a state transition."""
     observation: jnp.ndarray
     action: jnp.ndarray
     reward: jnp.ndarray
     done: jnp.ndarray
 
-# Create actor model and initialize parameters
+# Create environment and initialize actor model
 
 rng_key, init_key = jax.random.split(jax.random.key(SEED), 2)
 env, env_params = gymnax.make(ENV)
-
 num_actions = env.action_space(env_params).n
+empty_observation = jnp.empty(env.observation_space(env_params).shape)
+
 actor = Actor(params[ENV_KEY]["hidden_sizes"], num_actions)
-empty_observation = jnp.empty(env.observation_space(env_params).shape).ravel()
-actor_params = actor.init(init_key, empty_observation)
+actor_params = actor.init(init_key, empty_observation.ravel())
 
 print("Initialized actor parameters")
 print("Observation shape:", empty_observation.shape)
-print("Action space:", actor.num_actions)
+print("Action space:", num_actions)
 print()
 
 # Create a train state

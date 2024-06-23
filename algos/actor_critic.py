@@ -53,7 +53,7 @@ class Actor(nn.Module):
         return Categorical(out)
 
 class Critic(nn.Module):
-    """A value network with 2 hidden layers that outputs a numerical value for the state."""
+    """A value network with 2 hidden layers that outputs a numerical value."""
     hidden_sizes: Sequence[int]
 
     @nn.compact
@@ -64,3 +64,28 @@ class Critic(nn.Module):
             out = nn.relu(out)
         out = nn.Dense(1)(out)
         return out
+
+@flax.struct.dataclass
+class Transition:
+    """A data class that stores a state transition."""
+    observation: jnp.ndarray
+    action: jnp.ndarray
+    reward: jnp.ndarray
+    done: jnp.ndarray
+
+# Create environment and initialize actor and critic models
+
+rng_key, actor_key, critic_key = jax.random.split(jax.random.key(SEED), 3)
+env, env_params = gymnax.make(ENV)
+num_actions = env.action_space(env_params).n
+empty_observation = jnp.empty(env.observation_space(env_params).shape)
+
+actor = Actor(params[ENV_KEY]["actor_sizes"], num_actions)
+actor_params = actor.init(actor_key, empty_observation.ravel())
+critic = Critic(params[ENV_KEY]["critic_sizes"])
+critic_params = critic.init(critic_key, empty_observation.ravel())
+
+print("Initialized actor parameters")
+print("Observation shape:", empty_observation.shape)
+print("Action space:", num_actions)
+print()
