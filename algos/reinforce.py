@@ -13,9 +13,30 @@ import optax
 
 # Configuration parameters
 
-NUM_UPDATES = 1000
-BATCH_COUNT = 50
-ROLLOUT_LEN = 2000
+params = {
+    "cartpole": {
+        "hidden_sizes": (50, 20),
+        "num_updates": 1000,
+        "batch_count": 50,
+        "rollout_len": 2000,
+    },
+    "catch": {
+        "hidden_sizes": (50, 20),
+        "num_updates": 1000,
+        "batch_count": 50,
+        "rollout_len": 1000,
+    },
+    "breakout": {
+        "hidden_sizes": (400, 100),
+        "num_updates": 2000,
+        "batch_count": 50,
+        "rollout_len": 40000,
+    }
+}
+
+NUM_UPDATES = params[ENV_KEY]["num_updates"]
+BATCH_COUNT = params[ENV_KEY]["batch_count"]
+ROLLOUT_LEN = params[ENV_KEY]["rollout_len"]
 DISCOUNT_RATE = 0.99
 LEARNING_RATE = 0.001
 ADAM_EPS = 1e-5
@@ -29,9 +50,9 @@ class Actor(nn.Module):
 
     @nn.compact
     def __call__(self, input):
-        out = nn.Dense(50)(input)
+        out = nn.Dense(params[ENV_KEY]["hidden_sizes"][0])(input)
         out = nn.relu(out)
-        out = nn.Dense(20)(out)
+        out = nn.Dense(params[ENV_KEY]["hidden_sizes"][1])(out)
         out = nn.relu(out)
         out = nn.Dense(self.num_actions)(out)
         return Categorical(out)
