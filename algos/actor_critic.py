@@ -22,7 +22,8 @@ params = {
         "batch_count": 25,
         "rollout_len": 2000,
         "discount_rate": 0.99,
-        "learning_rate": 0.002,
+        "actor_learning_rate": 0.002,
+        "critic_learning_rate": 0.002,
     },
 }
 
@@ -30,31 +31,36 @@ NUM_UPDATES = params[ENV_KEY]["num_updates"]
 BATCH_COUNT = params[ENV_KEY]["batch_count"]
 ROLLOUT_LEN = params[ENV_KEY]["rollout_len"]
 DISCOUNT_RATE = params[ENV_KEY]["discount_rate"]
-LEARNING_RATE = params[ENV_KEY]["learning_rate"]
+ACTOR_RATE = params[ENV_KEY]["actor_learning_rate"]
+CRITIC_RATE = params[ENV_KEY]["critic_learning_rate"]
 ADAM_EPS = 1e-5
 
-class ActorCritic(nn.Module):
+class Actor(nn.Module):
     """
-    A policy and value network with 2 hidden layers each. The policy network outputs logits
-    for each action that are wrapped in a categorical distribution. The critic outputs a
-    numerical value for the value of the state.
+    A policy network with 2 hidden layers that outputs logits for each action. The logits
+    are wrapped in a categorical distribution that is returned from each call.
     """
-    actor_sizes: Sequence[int]
-    critic_sizes: Sequence[int]
+    hidden_sizes: Sequence[int]
     num_actions: int
 
     @nn.compact
     def __call__(self, input):
-        actor_out = input
-        for layer in self.actor_sizes:
-            actor_out = nn.Dense(layer)(actor_out)
-            actor_out = nn.relu(actor_out)
-        actor_out = nn.Dense(self.num_actions)(actor_out)
+        out = input
+        for layer in self.hidden_sizes:
+            out = nn.Dense(layer)(out)
+            out = nn.relu(out)
+        out = nn.Dense(self.num_actions)(out)
+        return Categorical(out)
 
-        critic_out = input
-        for layer in self.critic_sizes:
-            critic_out = nn.Dense(layer)(critic_out)
-            critic_out = nn.relu(critic_out)
-        critic_out = nn.Dense(1)(critic_out)
+class Critic(nn.Module):
+    """A value network with 2 hidden layers that outputs a numerical value for the state."""
+    hidden_sizes: Sequence[int]
 
-        return Categorical(actor_out), critic_out
+    @nn.compact
+    def __call__(self, input):
+        out = input
+        for layer in self.hidden_sizes:
+            out = nn.Dense(layer)(out)
+            out = nn.relu(out)
+        out = nn.Dense(1)(out)
+        return out
