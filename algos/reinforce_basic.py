@@ -47,7 +47,7 @@ rng_key, init_key = jax.random.split(jax.random.key(SEED), 2)
 env, env_params = gymnax.make(ENV)
 
 actor = Actor(env.action_space(env_params).n)
-empty_observation = jnp.empty(env.observation_space(env_params).shape)
+empty_observation = jnp.empty(env.observation_space(env_params).shape).ravel()
 actor_params = actor.init(init_key, empty_observation)
 
 print("Initialized actor parameters")
@@ -68,6 +68,7 @@ def run_rollout(train_state, rng_key):
     """Collects a policy rollout with a fixed number of steps."""
     rng_key, reset_key = jax.random.split(rng_key, 2)
     observation, env_state = env.reset(reset_key, env_params)
+    observation = observation.ravel()
 
     def step(rollout_state, i):
         """Advances the environment by 1 step by sampling from the policy."""
@@ -81,6 +82,7 @@ def run_rollout(train_state, rng_key):
         next_observation, next_state, reward, done, i = env.step(
             step_key, env_state, action, env_params,
         )
+        next_observation = next_observation.ravel()
         transition = Transition(
             observation, action, reward, done,
         )
@@ -116,11 +118,8 @@ def calc_discounted_rewards(transitions):
         xs=transitions,
         reverse=True,
     )
-    average_reward = jnp.mean(rewards)
-    rewards = rewards - jnp.mean(rewards)
-    rewards = rewards / jnp.std(rewards)
-
-    return (rewards, average_reward)
+    rewards = (rewards - jnp.mean(rewards)) / jnp.std(rewards)
+    return rewards
 
 @jax.jit
 def calc_episode_mask(transitions):
@@ -149,14 +148,32 @@ def update_actor(train_state, transitions, rewards, episode_mask):
     return (train_state, loss)
 
 @jax.jit
+def calc_episode_rewards(transitions):
+    """Calculates the total real reward for each episode."""
+    def calc_reward(prev_total, transition):
+        """Adds the current reward to the total."""
+        total = prev_total + transition.reward
+        next_total = total * (1 - transition.done)
+        return (next_total, total)
+
+    s, rewards = jax.lax.scan(
+        calc_reward,
+        init=jnp.float32(0),
+        xs=transitions,
+    )
+    return rewards
+
+@jax.jit
 def run_update(train_state, rng_key):
     """Runs an iteration of the training loop by sampling trajectories and applying policy gradients."""
     rng_key, rollout_key = jax.random.split(rng_key, 2)
     transitions = run_rollout(train_state, rollout_key)
-    rewards, average_reward = calc_discounted_rewards(transitions)
+    rewards = calc_discounted_rewards(transitions)
     episode_mask = calc_episode_mask(transitions)
     train_state, loss = update_actor(train_state, transitions, rewards, episode_mask)
 
+    total_rewards = calc_episode_rewards(transitions)
+    average_reward = jnp.sum(total_rewards * transitions.done) / jnp.sum(transitions.done)
     return (train_state, average_reward, loss, rng_key)
 
 # Run the training loop
