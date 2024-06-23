@@ -50,7 +50,7 @@ ADAM_EPS = 1e-5
 
 class Actor(nn.Module):
     """
-    A policy network with 3 hidden layers that outputs logits for each action. The logits
+    A policy network with 2 hidden layers that outputs logits for each action. The logits
     are wrapped in a categorical distribution that is returned from each call.
     """
     hidden_sizes: Sequence[int]

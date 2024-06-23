@@ -5,7 +5,7 @@ names = {
     "catch": "Catch-bsuite",
     "breakout": "Breakout-MinAtar",
 }
-key = "breakout"
+key = "cartpole"
 
 ENV = names[key]
 ENV_KEY = key
