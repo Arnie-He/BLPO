@@ -208,18 +208,14 @@ for u in range(int(NUM_UPDATES / BATCH_COUNT)):
 
 # Plot rewards and losses
 
+step_counts = [u * ROLLOUT_LEN for u in range(1, NUM_UPDATES + 1)]
+
 reward_figure, reward_axes = plt.subplots()
-reward_axes.plot(
-    list(range(1, len(average_rewards) + 1)),
-    average_rewards,
-)
+reward_axes.plot(step_counts, average_rewards)
 reward_axes.set_title(f"[{ENV}] REINFORCE average reward")
 reward_figure.savefig(f"./charts/reinforce/{ENV_KEY}_reward.png")
 
 loss_figure, loss_axes = plt.subplots()
-loss_axes.plot(
-    list(range(1, len(losses) + 1)),
-    losses,
-)
+loss_axes.plot(step_counts, losses)
 loss_axes.set_title(f"[{ENV}] REINFORCE loss")
 loss_figure.savefig(f"./charts/reinforce/{ENV_KEY}_loss.png")
