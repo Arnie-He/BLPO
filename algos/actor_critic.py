@@ -16,14 +16,15 @@ from typing import Sequence
 
 params = {
     "cartpole": {
-        "actor_sizes": (100, 50),
-        "critic_sizes": (100, 50),
-        "num_updates": 1000,
+        "actor_sizes": (30, 15),
+        "critic_sizes": (30, 15),
+        "num_updates": 500,
         "batch_count": 25,
-        "rollout_len": 10000,
+        "rollout_len": 2000,
         "discount_rate": 0.99,
-        "actor_learning_rate": 0.001,
-        "critic_learning_rate": 0.001,
+        "actor_learning_rate": 0.002,
+        "critic_learning_rate": 0.004,
+        "critic_updates": 20,
     },
 }
 
@@ -33,6 +34,7 @@ ROLLOUT_LEN = params[ENV_KEY]["rollout_len"]
 DISCOUNT_RATE = params[ENV_KEY]["discount_rate"]
 ACTOR_RATE = params[ENV_KEY]["actor_learning_rate"]
 CRITIC_RATE = params[ENV_KEY]["critic_learning_rate"]
+CRITIC_UPDATES = params[ENV_KEY]["critic_updates"]
 ADAM_EPS = 1e-5
 
 class Actor(nn.Module):
@@ -141,9 +143,7 @@ def run_rollout(actor_state, rng_key):
 @jax.jit
 def calc_values(critic_state, transitions, last_observation):
     """Calculates the advantage estimate at each time step."""
-    values = jax.vmap(
-        lambda transition: critic.apply(critic_state.params, transition.observation),
-    )(transitions)
+    values = critic.apply(critic_state.params, transitions.observation)
     last_value = critic.apply(critic_state.params, last_observation)
 
     def calc_advantage(next_value, value_info):
@@ -215,12 +215,42 @@ def run_update(actor_state, critic_state, rng_key):
     advantages, targets = calc_values(critic_state, transitions, last_observation)
 
     actor_state, actor_loss = update_actor(actor_state, transitions, advantages)
-    critic_state, critic_loss = update_critic(critic_state, transitions, targets)
+    critic_loss = 0
+    for c in range(CRITIC_UPDATES):
+        critic_state, critic_loss = update_critic(critic_state, transitions, targets)
 
     total_rewards = calc_episode_rewards(transitions)
     average_reward = jnp.sum(total_rewards * transitions.done) / jnp.sum(transitions.done)
     return (actor_state, critic_state, (average_reward, actor_loss, critic_loss), rng_key)
 
+# Run the training loop
+
+average_rewards = []
+actor_losses = []
+critic_losses = []
 for u in range(NUM_UPDATES):
     actor_state, critic_state, metrics, rng_key = run_update(actor_state, critic_state, rng_key)
-    print(metrics)
+    average_rewards.append(metrics[0])
+    actor_losses.append(metrics[1])
+    critic_losses.append(metrics[2])
+    if u % 50 == 0:
+        print(f"[Update {u}]: Average reward {metrics[0]}")
+
+# Plot rewards and losses
+
+step_counts = [u * ROLLOUT_LEN for u in range(1, NUM_UPDATES + 1)]
+
+reward_figure, reward_axes = plt.subplots()
+reward_axes.plot(step_counts, average_rewards)
+reward_axes.set_title(f"[{ENV}] Actor-Critic average reward")
+reward_figure.savefig(f"./charts/actor_critic/{ENV_KEY}_reward.png")
+
+actor_loss_figure, actor_loss_axes = plt.subplots()
+actor_loss_axes.plot(step_counts, actor_losses)
+actor_loss_axes.set_title(f"[{ENV}] Actor loss")
+actor_loss_figure.savefig(f"./charts/actor_critic/{ENV_KEY}_actor_loss.png")
+
+critic_loss_figure, critic_loss_axes = plt.subplots()
+critic_loss_axes.plot(step_counts, critic_losses)
+critic_loss_axes.set_title(f"[{ENV}] Critic loss")
+critic_loss_figure.savefig(f"./charts/actor_critic/{ENV_KEY}_critic_loss.png")
