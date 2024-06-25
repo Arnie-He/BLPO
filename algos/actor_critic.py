@@ -26,6 +26,17 @@ params = {
         "critic_learning_rate": 0.004,
         "critic_updates": 20,
     },
+    "catch": {
+        "actor_sizes": (30, 15),
+        "critic_sizes": (30, 15),
+        "num_updates": 1000,
+        "batch_count": 50,
+        "rollout_len": 1000,
+        "discount_rate": 0.99,
+        "actor_learning_rate": 0.002,
+        "critic_learning_rate": 0.004,
+        "critic_updates": 20,
+    },
 }
 
 NUM_UPDATES = params[ENV_KEY]["num_updates"]
@@ -208,8 +219,8 @@ def calc_episode_rewards(transitions):
     return rewards
 
 @jax.jit
-def run_update(actor_state, critic_state, rng_key):
-    """Runs an iteration of the training loop by sampling trajectories and applying gradients."""
+def run_update_vanilla(actor_state, critic_state, rng_key):
+    """Runs an iteration of the training loop with the vanilla parallel update."""
     rng_key, rollout_key = jax.random.split(rng_key, 2)
     transitions, last_observation = run_rollout(actor_state, rollout_key)
     advantages, targets = calc_values(critic_state, transitions, last_observation)
@@ -223,18 +234,53 @@ def run_update(actor_state, critic_state, rng_key):
     average_reward = jnp.sum(total_rewards * transitions.done) / jnp.sum(transitions.done)
     return (actor_state, critic_state, (average_reward, actor_loss, critic_loss), rng_key)
 
+@jax.jit
+def run_update_ordered(actor_state, critic_state, rng_key):
+    """Runs an iteration of the training loop with the value-first update."""
+    rng_key, rollout_key = jax.random.split(rng_key, 2)
+    transitions, last_observation = run_rollout(actor_state, rollout_key)
+
+    a, targets = calc_values(critic_state, transitions, last_observation)
+    critic_loss = 0
+    for c in range(CRITIC_UPDATES):
+        critic_state, critic_loss = update_critic(critic_state, transitions, targets)
+    advantages, t = calc_values(critic_state, transitions, last_observation)
+    actor_state, actor_loss = update_actor(actor_state, transitions, advantages)
+
+    total_rewards = calc_episode_rewards(transitions)
+    average_reward = jnp.sum(total_rewards * transitions.done) / jnp.sum(transitions.done)
+    return (actor_state, critic_state, (average_reward, actor_loss, critic_loss), rng_key)
+
+@functools.partial(jax.jit, static_argnums=3)
+def run_batch(actor_state, critic_state, rng_key, batch_count):
+    """Trains the model for a batch of updates."""
+    def run_once(batch_state, x):
+        """Runs an update and carries over the train state."""
+        actor_state, critic_state, rng_key = batch_state
+        actor_state, critic_state, metrics, rng_key = \
+            run_update_vanilla(actor_state, critic_state, rng_key)
+        return ((actor_state, critic_state, rng_key), metrics)
+
+    batch_state, batch_metrics = jax.lax.scan(
+        run_once,
+        init=(actor_state, critic_state, rng_key),
+        length=batch_count,
+    )
+    actor_state, critic_state, rng_key = batch_state
+    return (actor_state, critic_state, batch_metrics, rng_key)
+
 # Run the training loop
 
 average_rewards = []
 actor_losses = []
 critic_losses = []
-for u in range(NUM_UPDATES):
-    actor_state, critic_state, metrics, rng_key = run_update(actor_state, critic_state, rng_key)
-    average_rewards.append(metrics[0])
-    actor_losses.append(metrics[1])
-    critic_losses.append(metrics[2])
-    if u % 50 == 0:
-        print(f"[Update {u}]: Average reward {metrics[0]}")
+for u in range(int(NUM_UPDATES / BATCH_COUNT)):
+    actor_state, critic_state, batch_metrics, rng_key = \
+        run_batch(actor_state, critic_state, rng_key, BATCH_COUNT)
+    average_rewards += [float(r) for r in batch_metrics[0]]
+    actor_losses += [float(l) for l in batch_metrics[1]]
+    critic_losses += [float(l) for l in batch_metrics[2]]
+    print(f"[Update {(u + 1) * BATCH_COUNT}]: Average reward {batch_metrics[0][-1]}")
 
 # Plot rewards and losses
 
