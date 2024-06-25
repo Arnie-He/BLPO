@@ -167,7 +167,7 @@ def calc_episode_mask(transitions):
 
 @jax.jit
 def update_actor(train_state, transitions, rewards, episode_mask):
-    """Calculates and applies the REINFORCE estimator gradient at each time step."""
+    """Calculates and applies the REINFORCE gradient estimator at each time step."""
     def reinforce_loss(params, transitions, rewards, episode_mask):
         """Calculates the REINFORCE estimator on a batch of transitions."""
         action_dists = actor.apply(params, transitions.observation)
