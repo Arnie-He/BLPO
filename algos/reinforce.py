@@ -35,7 +35,7 @@ params = {
         "hidden_sizes": (400, 100),
         "num_updates": 1000,
         "batch_count": 50,
-        "rollout_len": 20000,
+        "rollout_len": 2000,
         "discount_rate": 0.995,
         "learning_rate": 0.001,
     }

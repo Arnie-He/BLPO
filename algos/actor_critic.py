@@ -37,6 +37,17 @@ params = {
         "critic_learning_rate": 0.004,
         "critic_updates": 25,
     },
+    "breakout": {
+        "actor_sizes": (400, 100),
+        "critic_sizes": (400, 100),
+        "num_updates": 1000,
+        "batch_count": 50,
+        "rollout_len": 2000,
+        "discount_rate": 0.995,
+        "actor_learning_rate": 0.0015,
+        "critic_learning_rate": 0.003,
+        "critic_updates": 20,
+    },
 }
 
 NUM_UPDATES = params[ENV_KEY]["num_updates"]
