@@ -63,7 +63,7 @@ class Critic(nn.Module):
             out = nn.Dense(layer)(out)
             out = nn.relu(out)
         out = nn.Dense(1)(out)
-        return out
+        return jnp.squeeze(out)
 
 @flax.struct.dataclass
 class Transition:
@@ -109,7 +109,7 @@ def run_rollout(actor_state, rng_key):
     observation, env_state = env.reset(reset_key, env_params)
     observation = observation.ravel()
 
-    def step(rollout_state, i):
+    def step(rollout_state, x):
         """Advances the environment by 1 step by sampling from the policy."""
         # Sample action
         actor_state, env_state, observation, rng_key = rollout_state
@@ -129,12 +129,39 @@ def run_rollout(actor_state, rng_key):
         next_step = (actor_state, next_state, next_observation, rng_key)
         return (next_step, transition)
 
-    s, transitions = jax.lax.scan(
+    rollout_state, transitions = jax.lax.scan(
         step,
         init=(actor_state, env_state, observation, rng_key),
         length=ROLLOUT_LEN,
     )
-    return transitions
+    a, n, last_observation, r = rollout_state
+    return (transitions, last_observation)
 
-transitions = run_rollout(actor_state, rng_key)
+def calc_values(critic_state, transitions, last_observation):
+    """Calculates the advantage estimate at each time step."""
+    values = jax.vmap(
+        lambda transition: critic.apply(critic_state.params, transition.observation),
+    )(transitions)
+    last_value = critic.apply(critic_state.params, last_observation)
+
+    def calc_advantage(next_value, value_info):
+        value, reward, done = value_info
+        target = reward + DISCOUNT_RATE * next_value * (1 - done)
+        advantage = target - value
+        return (value, (advantage, target))
+
+    v, result = jax.lax.scan(
+        calc_advantage,
+        init=last_value,
+        xs=(values, transitions.reward, transitions.done),
+        reverse=True,
+    )
+    advantages, targets = result
+    return advantages, targets
+
+transitions, last_observation = run_rollout(actor_state, rng_key)
 print(transitions)
+print(last_observation)
+advantages, targets = calc_values(critic_state, transitions, last_observation)
+print(advantages)
+print(targets)

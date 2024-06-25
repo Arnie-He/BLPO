@@ -103,7 +103,7 @@ def run_rollout(train_state, rng_key):
     observation, env_state = env.reset(reset_key, env_params)
     observation = observation.ravel()
 
-    def step(rollout_state, i):
+    def step(rollout_state, x):
         """Advances the environment by 1 step by sampling from the policy."""
         # Sample action
         train_state, env_state, observation, rng_key = rollout_state
