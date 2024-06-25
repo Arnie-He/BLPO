@@ -22,9 +22,9 @@ params = {
         "batch_count": 25,
         "rollout_len": 2000,
         "discount_rate": 0.99,
-        "actor_learning_rate": 0.002,
+        "actor_learning_rate": 0.0025,
         "critic_learning_rate": 0.004,
-        "critic_updates": 20,
+        "critic_updates": 25,
     },
     "catch": {
         "actor_sizes": (30, 15),
@@ -33,9 +33,9 @@ params = {
         "batch_count": 50,
         "rollout_len": 1000,
         "discount_rate": 0.99,
-        "actor_learning_rate": 0.002,
+        "actor_learning_rate": 0.0025,
         "critic_learning_rate": 0.004,
-        "critic_updates": 20,
+        "critic_updates": 25,
     },
 }
 
