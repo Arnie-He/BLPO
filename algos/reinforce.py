@@ -151,7 +151,7 @@ def calc_discounted_rewards(transitions):
         xs=transitions,
         reverse=True,
     )
-    rewards = (rewards - jnp.mean(rewards)) / jnp.std(rewards)
+    rewards = (rewards - jnp.mean(rewards)) / (jnp.std(rewards) + 1e-8)
     return rewards
 
 @jax.jit

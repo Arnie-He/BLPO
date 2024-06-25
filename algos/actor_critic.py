@@ -16,14 +16,14 @@ from typing import Sequence
 
 params = {
     "cartpole": {
-        "actor_sizes": (30, 15),
-        "critic_sizes": (30, 15),
+        "actor_sizes": (100, 50),
+        "critic_sizes": (100, 50),
         "num_updates": 1000,
         "batch_count": 25,
-        "rollout_len": 3000,
+        "rollout_len": 10000,
         "discount_rate": 0.99,
-        "actor_learning_rate": 0.002,
-        "critic_learning_rate": 0.002,
+        "actor_learning_rate": 0.001,
+        "critic_learning_rate": 0.001,
     },
 }
 
@@ -159,7 +159,7 @@ def calc_values(critic_state, transitions, last_observation):
         reverse=True,
     )
     advantages, targets = result
-    advantages = (advantages - jnp.mean(advantages)) / jnp.std(advantages)
+    advantages = (advantages - jnp.mean(advantages)) / (jnp.std(advantages) + 1e-8)
 
     return advantages, targets
 
