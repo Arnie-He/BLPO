@@ -9,7 +9,6 @@ import functools
 import gymnax
 import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import optax
 
 @functools.partial(flax.struct.dataclass, kw_only=True)
@@ -24,8 +23,8 @@ class Hyperparams:
 
 ENV_CONFIG = {
     "cartpole": {
-        "model": DiscreteActor,
-        "model_params": [(30, 15), DynParam.ActionCount],
+        "actor_model": DiscreteActor,
+        "actor_params": [(30, 15), DynParam.ActionCount],
         "hyperparams": Hyperparams(
             num_updates=500,
             batch_count=25,
@@ -36,8 +35,8 @@ ENV_CONFIG = {
         ),
     },
     "catch": {
-        "model": DiscreteActor,
-        "model_params": [(30, 15), DynParam.ActionCount],
+        "actor_model": DiscreteActor,
+        "actor_params": [(30, 15), DynParam.ActionCount],
         "hyperparams": Hyperparams(
             num_updates=1000,
             batch_count=50,
@@ -57,7 +56,7 @@ class Transition:
     reward: jnp.ndarray
     done: jnp.ndarray
 
-def run_rollout(env, env_params, train_state, rng_key, hyperparams):
+def run_rollout(env, env_params, length, train_state, rng_key):
     """Collects a policy rollout with a fixed number of steps."""
     rng_key, reset_key = jax.random.split(rng_key, 2)
     observation, env_state = env.reset(reset_key, env_params)
@@ -84,7 +83,7 @@ def run_rollout(env, env_params, train_state, rng_key, hyperparams):
     s, transitions = jax.lax.scan(
         step,
         init=(train_state, env_state, observation, rng_key),
-        length=hyperparams.rollout_len,
+        length=length,
     )
     return transitions
 
@@ -153,7 +152,7 @@ def calc_episode_rewards(transitions):
 def run_update(env, env_params, train_state, rng_key, hyperparams):
     """Runs an iteration of the training loop by sampling trajectories and applying policy gradients."""
     rng_key, rollout_key = jax.random.split(rng_key, 2)
-    transitions = run_rollout(env, env_params, train_state, rollout_key, hyperparams)
+    transitions = run_rollout(env, env_params, hyperparams.rollout_len, train_state, rollout_key)
     rewards = calc_discounted_rewards(transitions, hyperparams.discount_rate)
     episode_mask = calc_episode_mask(transitions)
     train_state, loss = update_actor(train_state, transitions, rewards, episode_mask)
@@ -189,8 +188,8 @@ def train(env_key, seed, logger, verbose = False):
     env, env_params = gymnax.make(ENV_NAMES[env_key])
 
     # Initialize actor model
-    model_params = models.params.init(env, env_params, config["model_params"])
-    actor = config["model"](*model_params)
+    actor_model_params = models.params.init(env, env_params, config["actor_params"])
+    actor = config["actor_model"](*actor_model_params)
     empty_observation = jnp.empty(env.observation_space(env_params).shape)
     actor_params = actor.init(init_key, empty_observation)
 
