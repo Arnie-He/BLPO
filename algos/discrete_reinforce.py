@@ -1,8 +1,9 @@
 from environments import ENV_NAMES
+from models.discrete_actor import DiscreteActor
+import models.params
+from models.params import DynParam
 
-from distrax import Categorical
 import flax
-from flax import linen as nn
 from flax.training.train_state import TrainState
 import functools
 import gymnax
@@ -10,11 +11,10 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import optax
-from typing import Sequence
 
 @functools.partial(flax.struct.dataclass, kw_only=True)
-class Config:
-    hidden_sizes: tuple[int] = flax.struct.field(pytree_node=False)
+class Hyperparams:
+    """A data class that stores hyperparameter configurations."""
     num_updates: int = flax.struct.field(pytree_node=False)
     batch_count: int = flax.struct.field(pytree_node=False)
     rollout_len: int = flax.struct.field(pytree_node=False)
@@ -23,51 +23,31 @@ class Config:
     adam_eps: float = flax.struct.field(pytree_node=False)
 
 ENV_CONFIG = {
-    "cartpole": Config(
-        hidden_sizes=(30, 15),
-        num_updates=500,
-        batch_count=25,
-        rollout_len=2000,
-        discount_rate=0.99,
-        learning_rate=0.002,
-        adam_eps=1e-5,
-    ),
-    "catch": Config(
-        hidden_sizes=(30, 15),
-        num_updates=1000,
-        batch_count=50,
-        rollout_len=1000,
-        discount_rate=0.99,
-        learning_rate=0.002,
-        adam_eps=1e-5,
-    ),
-    "breakout": Config(
-        hidden_sizes=(400, 100),
-        num_updates=1000,
-        batch_count=50,
-        rollout_len=2000,
-        discount_rate=0.995,
-        learning_rate=0.001,
-        adam_eps=1e-5,
-    ),
+    "cartpole": {
+        "model": DiscreteActor,
+        "model_params": [(30, 15), DynParam.ActionCount],
+        "hyperparams": Hyperparams(
+            num_updates=500,
+            batch_count=25,
+            rollout_len=2000,
+            discount_rate=0.99,
+            learning_rate=0.002,
+            adam_eps=1e-5,
+        ),
+    },
+    "catch": {
+        "model": DiscreteActor,
+        "model_params": [(30, 15), DynParam.ActionCount],
+        "hyperparams": Hyperparams(
+            num_updates=1000,
+            batch_count=50,
+            rollout_len=1000,
+            discount_rate=0.99,
+            learning_rate=0.002,
+            adam_eps=1e-5,
+        ),
+    },
 }
-
-class Actor(nn.Module):
-    """
-    A policy network with 2 hidden layers that outputs logits for each action. The logits
-    are wrapped in a categorical distribution that is returned from each call.
-    """
-    hidden_sizes: Sequence[int]
-    num_actions: int
-
-    @nn.compact
-    def __call__(self, input):
-        out = input
-        for layer in self.hidden_sizes:
-            out = nn.Dense(layer)(out)
-            out = nn.relu(out)
-        out = nn.Dense(self.num_actions)(out)
-        return Categorical(out)
 
 @flax.struct.dataclass
 class Transition:
@@ -77,11 +57,10 @@ class Transition:
     reward: jnp.ndarray
     done: jnp.ndarray
 
-def run_rollout(env, env_params, train_state, rng_key, config):
+def run_rollout(env, env_params, train_state, rng_key, hyperparams):
     """Collects a policy rollout with a fixed number of steps."""
     rng_key, reset_key = jax.random.split(rng_key, 2)
     observation, env_state = env.reset(reset_key, env_params)
-    observation = observation.ravel()
 
     def step(rollout_state, x):
         """Advances the environment by 1 step by sampling from the policy."""
@@ -95,7 +74,6 @@ def run_rollout(env, env_params, train_state, rng_key, config):
         next_observation, next_state, reward, done, i = env.step(
             step_key, env_state, action, env_params,
         )
-        next_observation = next_observation.ravel()
         transition = Transition(
             observation, action, reward, done,
         )
@@ -106,7 +84,7 @@ def run_rollout(env, env_params, train_state, rng_key, config):
     s, transitions = jax.lax.scan(
         step,
         init=(train_state, env_state, observation, rng_key),
-        length=config.rollout_len,
+        length=hyperparams.rollout_len,
     )
     return transitions
 
@@ -147,7 +125,7 @@ def update_actor(train_state, transitions, rewards, episode_mask):
     """Calculates and applies the REINFORCE gradient estimator at each time step."""
     def reinforce_loss(params, transitions, rewards, episode_mask):
         """Calculates the REINFORCE estimator on a batch of transitions."""
-        action_dists = train_state.apply_fn(params, transitions.observation)
+        action_dists = jax.vmap(train_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
         log_probs = action_dists.log_prob(transitions.action)
         reinforce_losses = -log_probs * rewards * episode_mask
         return jnp.sum(reinforce_losses) / jnp.sum(episode_mask)
@@ -172,11 +150,11 @@ def calc_episode_rewards(transitions):
     )
     return rewards
 
-def run_update(env, env_params, train_state, rng_key, config):
+def run_update(env, env_params, train_state, rng_key, hyperparams):
     """Runs an iteration of the training loop by sampling trajectories and applying policy gradients."""
     rng_key, rollout_key = jax.random.split(rng_key, 2)
-    transitions = run_rollout(env, env_params, train_state, rollout_key, config)
-    rewards = calc_discounted_rewards(transitions, config.discount_rate)
+    transitions = run_rollout(env, env_params, train_state, rollout_key, hyperparams)
+    rewards = calc_discounted_rewards(transitions, hyperparams.discount_rate)
     episode_mask = calc_episode_mask(transitions)
     train_state, loss = update_actor(train_state, transitions, rewards, episode_mask)
 
@@ -185,70 +163,65 @@ def run_update(env, env_params, train_state, rng_key, config):
     return (train_state, average_reward, loss, rng_key)
 
 @functools.partial(jax.jit, static_argnums=0)
-def run_batch(env, env_params, train_state, rng_key, config):
+def run_batch(env, env_params, train_state, rng_key, hyperparams):
     """Trains the model for a batch of updates."""
     def run_once(batch_state, x):
         """Runs an update and carries over the train state."""
         train_state, rng_key = batch_state
         train_state, average_reward, loss, rng_key = \
-            run_update(env, env_params, train_state, rng_key, config)
+            run_update(env, env_params, train_state, rng_key, hyperparams)
         return ((train_state, rng_key), (average_reward, loss))
 
     batch_state, results = jax.lax.scan(
         run_once,
         init=(train_state, rng_key),
-        length=config.batch_count,
+        length=hyperparams.batch_count,
     )
     train_state, rng_key = batch_state
     average_rewards, losses = results
     return (train_state, rng_key, average_rewards, losses)
 
-def train(env_key, seed):
-    # Create environment and initialize actor model
-
+def train(env_key, seed, logger, verbose = False):
+    # Create environment
+    config = ENV_CONFIG[env_key]
+    hyperparams = config["hyperparams"]
     rng_key, init_key = jax.random.split(jax.random.key(seed), 2)
     env, env_params = gymnax.make(ENV_NAMES[env_key])
-    num_actions = env.action_space(env_params).n
+
+    # Initialize actor model
+    model_params = models.params.init(env, env_params, config["model_params"])
+    actor = config["model"](*model_params)
     empty_observation = jnp.empty(env.observation_space(env_params).shape)
-
-    config = ENV_CONFIG[env_key]
-    actor = Actor(config.hidden_sizes, num_actions)
-    actor_params = actor.init(init_key, empty_observation.ravel())
-
-    print("Initialized actor parameters")
-    print("Observation shape:", empty_observation.shape)
-    print("Action space:", num_actions)
-    print()
+    actor_params = actor.init(init_key, empty_observation)
 
     # Create a train state
-
     train_state = TrainState.create(
         apply_fn=actor.apply,
         params=actor_params,
-        tx=optax.adam(config.learning_rate, eps=config.adam_eps),
+        tx=optax.adam(hyperparams.learning_rate, eps=hyperparams.adam_eps),
+    )
+
+    # Set logger info
+    logger.set_interval(hyperparams.rollout_len)
+    logger.set_info(
+        "reward",
+        f"[{ENV_NAMES[env_key]}] REINFORCE average reward",
+        f"charts/reinforce/{env_key}_reward.png",
+    )
+    logger.set_info(
+        "actor_loss",
+        f"[{ENV_NAMES[env_key]}] REINFORCE actor loss",
+        f"charts/reinforce/{env_key}_actor_loss.png",
     )
 
     # Run the training loop
-
-    average_rewards = []
-    losses = []
-    for u in range(int(config.num_updates / config.batch_count)):
+    num_batches = int(hyperparams.num_updates / hyperparams.batch_count)
+    for b in range(num_batches):
         train_state, rng_key, batch_rewards, batch_losses = \
-            run_batch(env, env_params, train_state, rng_key, config)
-        average_rewards += [float(r) for r in batch_rewards]
-        losses += [float(l) for l in batch_losses]
-        print(f"[Update {(u + 1) * config.batch_count}]: Average reward {batch_rewards[-1]}")
-
-    # Plot rewards and losses
-
-    step_counts = [u * config.rollout_len for u in range(1, config.num_updates + 1)]
-
-    reward_figure, reward_axes = plt.subplots()
-    reward_axes.plot(step_counts, average_rewards)
-    reward_axes.set_title(f"[{ENV_NAMES[env_key]}] REINFORCE average reward")
-    reward_figure.savefig(f"./charts/reinforce/{env_key}_reward.png")
-
-    loss_figure, loss_axes = plt.subplots()
-    loss_axes.plot(step_counts, losses)
-    loss_axes.set_title(f"[{ENV_NAMES[env_key]}] REINFORCE loss")
-    loss_figure.savefig(f"./charts/reinforce/{env_key}_loss.png")
+            run_batch(env, env_params, train_state, rng_key, hyperparams)
+        logger.log_metrics({
+            "reward": batch_rewards,
+            "actor_loss": batch_losses,
+        })
+        if verbose:
+            print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {batch_rewards[-1]}")

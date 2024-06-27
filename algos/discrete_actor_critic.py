@@ -1,8 +1,8 @@
-from env import ENV, ENV_KEY, SEED
+from algos.env import ENV, ENV_KEY, SEED
+from models.discrete_actor import DiscreteActor as Actor
+from models.critic import Critic
 
-from distrax import Categorical
 import flax
-from flax import linen as nn
 from flax.training.train_state import TrainState
 import functools
 import gymnax
@@ -10,7 +10,6 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import optax
-from typing import Sequence
 
 # Configuration parameters
 
@@ -58,36 +57,6 @@ ACTOR_RATE = params[ENV_KEY]["actor_learning_rate"]
 CRITIC_RATE = params[ENV_KEY]["critic_learning_rate"]
 CRITIC_UPDATES = params[ENV_KEY]["critic_updates"]
 ADAM_EPS = 1e-5
-
-class Actor(nn.Module):
-    """
-    A policy network with 2 hidden layers that outputs logits for each action. The logits
-    are wrapped in a categorical distribution that is returned from each call.
-    """
-    hidden_sizes: Sequence[int]
-    num_actions: int
-
-    @nn.compact
-    def __call__(self, input):
-        out = input
-        for layer in self.hidden_sizes:
-            out = nn.Dense(layer)(out)
-            out = nn.relu(out)
-        out = nn.Dense(self.num_actions)(out)
-        return Categorical(out)
-
-class Critic(nn.Module):
-    """A value network with 2 hidden layers that outputs a numerical value."""
-    hidden_sizes: Sequence[int]
-
-    @nn.compact
-    def __call__(self, input):
-        out = input
-        for layer in self.hidden_sizes:
-            out = nn.Dense(layer)(out)
-            out = nn.relu(out)
-        out = nn.Dense(1)(out)
-        return jnp.squeeze(out)
 
 @flax.struct.dataclass
 class Transition:
