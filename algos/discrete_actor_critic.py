@@ -1,10 +1,6 @@
-from algos.env import ENV, ENV_KEY, SEED
-from models.discrete_actor import DiscreteActor as Actor
-from models.critic import Critic
-
 from environments import ENV_NAMES
-from models.discrete_actor import DiscreteActor
 from models.critic import Critic
+from models.discrete_actor import DiscreteActor
 import models.params
 from models.params import DynParam
 
@@ -14,7 +10,6 @@ import functools
 import gymnax
 import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import optax
 
 @functools.partial(flax.struct.dataclass, kw_only=True)
@@ -61,53 +56,8 @@ ENV_CONFIG = {
             critic_updates=25,
             adam_eps=1e-5,
         ),
-    }
-}
-
-params = {
-    "cartpole": {
-        "actor_sizes": (30, 15),
-        "critic_sizes": (30, 15),
-        "num_updates": 500,
-        "batch_count": 25,
-        "rollout_len": 2000,
-        "discount_rate": 0.99,
-        "actor_learning_rate": 0.0025,
-        "critic_learning_rate": 0.004,
-        "critic_updates": 25,
-    },
-    "catch": {
-        "actor_sizes": (30, 15),
-        "critic_sizes": (30, 15),
-        "num_updates": 1000,
-        "batch_count": 50,
-        "rollout_len": 1000,
-        "discount_rate": 0.99,
-        "actor_learning_rate": 0.0025,
-        "critic_learning_rate": 0.004,
-        "critic_updates": 25,
-    },
-    "breakout": {
-        "actor_sizes": (400, 100),
-        "critic_sizes": (400, 100),
-        "num_updates": 1000,
-        "batch_count": 50,
-        "rollout_len": 2000,
-        "discount_rate": 0.995,
-        "actor_learning_rate": 0.0015,
-        "critic_learning_rate": 0.003,
-        "critic_updates": 20,
     },
 }
-
-NUM_UPDATES = params[ENV_KEY]["num_updates"]
-BATCH_COUNT = params[ENV_KEY]["batch_count"]
-ROLLOUT_LEN = params[ENV_KEY]["rollout_len"]
-DISCOUNT_RATE = params[ENV_KEY]["discount_rate"]
-ACTOR_RATE = params[ENV_KEY]["actor_learning_rate"]
-CRITIC_RATE = params[ENV_KEY]["critic_learning_rate"]
-CRITIC_UPDATES = params[ENV_KEY]["critic_updates"]
-ADAM_EPS = 1e-5
 
 @flax.struct.dataclass
 class Transition:
@@ -220,7 +170,7 @@ def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
 
     actor_state, actor_loss = update_actor(actor_state, transitions, advantages)
     critic_loss = 0
-    for c in range(CRITIC_UPDATES):
+    for c in range(hyperparams.critic_updates):
         critic_state, critic_loss = update_critic(critic_state, transitions, targets)
 
     total_rewards = calc_episode_rewards(transitions)
@@ -245,67 +195,63 @@ def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams):
     actor_state, critic_state, rng_key = batch_state
     return (actor_state, critic_state, batch_metrics, rng_key)
 
-# Create environment and initialize actor and critic models
+def train(env_key, seed, logger, verbose = False):
+    # Create environment
+    config = ENV_CONFIG[env_key]
+    hyperparams = config["hyperparams"]
+    rng_key, actor_key, critic_key = jax.random.split(jax.random.key(seed), 3)
+    env, env_params = gymnax.make(ENV_NAMES[env_key])
+    empty_observation = jnp.empty(env.observation_space(env_params).shape)
 
-rng_key, actor_key, critic_key = jax.random.split(jax.random.key(SEED), 3)
-env, env_params = gymnax.make(ENV)
-num_actions = env.action_space(env_params).n
-empty_observation = jnp.empty(env.observation_space(env_params).shape)
+    # Initialize actor model
+    actor_model_params = models.params.init(env, env_params, config["actor_params"])
+    actor = config["actor_model"](*actor_model_params)
+    actor_params = actor.init(actor_key, empty_observation)
 
-actor = Actor(params[ENV_KEY]["actor_sizes"], num_actions)
-actor_params = actor.init(actor_key, empty_observation)
-critic = Critic(params[ENV_KEY]["critic_sizes"])
-critic_params = critic.init(critic_key, empty_observation)
+    # Initialize critic model
+    critic_model_params = models.params.init(env, env_params, config["critic_params"])
+    critic = config["critic_model"](*critic_model_params)
+    critic_params = critic.init(critic_key, empty_observation)
 
-print("Initialized actor parameters")
-print("Observation shape:", empty_observation.shape)
-print("Action space:", num_actions)
-print()
+    # Create actor and critic train states
+    actor_state = TrainState.create(
+        apply_fn=actor.apply,
+        params=actor_params,
+        tx=optax.adam(hyperparams.actor_learning_rate, eps=hyperparams.adam_eps),
+    )
+    critic_state = TrainState.create(
+        apply_fn=critic.apply,
+        params=critic_params,
+        tx=optax.adam(hyperparams.critic_learning_rate, eps=hyperparams.adam_eps),
+    )
 
-# Create actor and critic train states
+    # Set logger info
+    logger.set_interval(hyperparams.rollout_len)
+    logger.set_info(
+        "reward",
+        f"[{ENV_NAMES[env_key]}] Actor-Critic average reward",
+        f"charts/actor_critic/{env_key}_reward.png",
+    )
+    logger.set_info(
+        "actor_loss",
+        f"[{ENV_NAMES[env_key]}] Actor loss",
+        f"charts/actor_critic/{env_key}_actor_loss.png",
+    )
+    logger.set_info(
+        "critic_loss",
+        f"[{ENV_NAMES[env_key]}] Critic loss",
+        f"charts/actor_critic/{env_key}_critic_loss.png",
+    )
 
-actor_state = TrainState.create(
-    apply_fn=actor.apply,
-    params=actor_params,
-    tx=optax.adam(ACTOR_RATE, eps=ADAM_EPS),
-)
-critic_state = TrainState.create(
-    apply_fn=critic.apply,
-    params=critic_params,
-    tx=optax.adam(CRITIC_RATE, eps=ADAM_EPS),
-)
-
-# Run the training loop
-
-average_rewards = []
-actor_losses = []
-critic_losses = []
-
-hyperparams = ENV_CONFIG[ENV_KEY]["hyperparams"]
-num_batches = int(hyperparams.num_updates / hyperparams.batch_count)
-for u in range(num_batches):
-    actor_state, critic_state, batch_metrics, rng_key = \
-        run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams)
-    average_rewards += [float(r) for r in batch_metrics[0]]
-    actor_losses += [float(l) for l in batch_metrics[1]]
-    critic_losses += [float(l) for l in batch_metrics[2]]
-    print(f"[Update {(u + 1) * hyperparams.batch_count}]: Average reward {batch_metrics[0][-1]}")
-
-# Plot rewards and losses
-
-step_counts = [u * ROLLOUT_LEN for u in range(1, NUM_UPDATES + 1)]
-
-reward_figure, reward_axes = plt.subplots()
-reward_axes.plot(step_counts, average_rewards)
-reward_axes.set_title(f"[{ENV}] Actor-Critic average reward")
-reward_figure.savefig(f"./charts/actor_critic/{ENV_KEY}_reward.png")
-
-actor_loss_figure, actor_loss_axes = plt.subplots()
-actor_loss_axes.plot(step_counts, actor_losses)
-actor_loss_axes.set_title(f"[{ENV}] Actor loss")
-actor_loss_figure.savefig(f"./charts/actor_critic/{ENV_KEY}_actor_loss.png")
-
-critic_loss_figure, critic_loss_axes = plt.subplots()
-critic_loss_axes.plot(step_counts, critic_losses)
-critic_loss_axes.set_title(f"[{ENV}] Critic loss")
-critic_loss_figure.savefig(f"./charts/actor_critic/{ENV_KEY}_critic_loss.png")
+    # Run the training loop
+    num_batches = int(hyperparams.num_updates / hyperparams.batch_count)
+    for b in range(num_batches):
+        actor_state, critic_state, batch_metrics, rng_key = \
+            run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams)
+        logger.log_metrics({
+            "reward": batch_metrics[0],
+            "actor_loss": batch_metrics[1],
+            "critic_loss": batch_metrics[2],
+        })
+        if verbose:
+            print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {batch_metrics[0][-1]}")

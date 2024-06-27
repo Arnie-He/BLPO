@@ -186,14 +186,14 @@ def train(env_key, seed, logger, verbose = False):
     hyperparams = config["hyperparams"]
     rng_key, init_key = jax.random.split(jax.random.key(seed), 2)
     env, env_params = gymnax.make(ENV_NAMES[env_key])
+    empty_observation = jnp.empty(env.observation_space(env_params).shape)
 
     # Initialize actor model
     actor_model_params = models.params.init(env, env_params, config["actor_params"])
     actor = config["actor_model"](*actor_model_params)
-    empty_observation = jnp.empty(env.observation_space(env_params).shape)
     actor_params = actor.init(init_key, empty_observation)
 
-    # Create a train state
+    # Create actor train state
     train_state = TrainState.create(
         apply_fn=actor.apply,
         params=actor_params,
