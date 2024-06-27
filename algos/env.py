@@ -1,12 +1,3 @@
-# Environment configuration for training
-
-names = {
-    "cartpole": "CartPole-v1",
-    "catch": "Catch-bsuite",
-    "breakout": "Breakout-MinAtar",
-}
-key = "breakout"
-
-ENV = names[key]
-ENV_KEY = key
+ENV = "CartPole-v1"
+ENV_KEY = "cartpole"
 SEED = 0
