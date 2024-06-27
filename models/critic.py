@@ -1,6 +1,6 @@
 from flax import linen as nn
 import jax.numpy as jnp
-from typing import Sequence
+from typing import Any, Sequence
 
 class Critic(nn.Module):
     """
@@ -15,5 +15,27 @@ class Critic(nn.Module):
         for layer in self.hidden_sizes:
             out = nn.Dense(layer)(out)
             out = nn.relu(out)
+        out = nn.Dense(1)(out)
+        return jnp.squeeze(out)
+
+class PixelCritic(nn.Module):
+    """
+    A policy network with 2 hidden layers that outputs logits for each action. The logits
+    are wrapped in a categorical distribution that is returned from each call.
+    """
+    conv_fns: Sequence[Any]
+    dense_sizes: Sequence[int]
+
+    @nn.compact
+    def __call__(self, input):
+        out = input
+        for fn in self.conv_fns:
+            out = fn(out)
+
+        out = out.ravel()
+        for size in self.dense_sizes:
+            out = nn.Dense(size)(out)
+            out = nn.relu(out)
+
         out = nn.Dense(1)(out)
         return jnp.squeeze(out)

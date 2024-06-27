@@ -1,10 +1,11 @@
 from environments import ENV_NAMES
-from models.critic import Critic
-from models.discrete_actor import DiscreteActor
+from models.critic import Critic, PixelCritic
+from models.discrete_actor import DiscreteActor, DiscretePixelActor
 import models.params
 from models.params import DynParam
 
 import flax
+import flax.linen as nn
 from flax.training.train_state import TrainState
 import functools
 import gymnax
@@ -54,6 +55,43 @@ ENV_CONFIG = {
             actor_learning_rate=0.0025,
             critic_learning_rate=0.004,
             critic_updates=25,
+            adam_eps=1e-5,
+        ),
+    },
+    "space_invaders": {
+        "actor_model": DiscretePixelActor,
+        "actor_params": [
+            (
+                nn.Conv(features=32, kernel_size=(3, 3)),
+                nn.relu,
+                lambda data: nn.avg_pool(data, window_shape=(2, 2), strides=(2, 2)),
+                nn.Conv(features=64, kernel_size=(3, 3)),
+                nn.relu,
+                lambda data: nn.avg_pool(data, window_shape=(2, 2), strides=(2, 2)),
+            ),
+            (256,),
+            DynParam.ActionCount,
+        ],
+        "critic_model": PixelCritic,
+        "critic_params": [
+            (
+                nn.Conv(features=32, kernel_size=(3, 3)),
+                nn.relu,
+                lambda data: nn.avg_pool(data, window_shape=(2, 2), strides=(2, 2)),
+                nn.Conv(features=64, kernel_size=(3, 3)),
+                nn.relu,
+                lambda data: nn.avg_pool(data, window_shape=(2, 2), strides=(2, 2)),
+            ),
+            (256,),
+        ],
+        "hyperparams": Hyperparams(
+            num_updates=2000,
+            batch_count=2,
+            rollout_len=2000,
+            discount_rate=0.995,
+            actor_learning_rate=0.0015,
+            critic_learning_rate=0.003,
+            critic_updates=20,
             adam_eps=1e-5,
         ),
     },
