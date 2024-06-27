@@ -195,7 +195,7 @@ def train(env_key, seed, logger, verbose = False):
 
     # Create actor train state
     train_state = TrainState.create(
-        apply_fn=actor.apply,
+        apply_fn=jax.jit(actor.apply),
         params=actor_params,
         tx=optax.adam(hyperparams.learning_rate, eps=hyperparams.adam_eps),
     )

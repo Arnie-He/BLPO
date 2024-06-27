@@ -86,7 +86,7 @@ ENV_CONFIG = {
         ],
         "hyperparams": Hyperparams(
             num_updates=2000,
-            batch_count=2,
+            batch_count=50,
             rollout_len=2000,
             discount_rate=0.995,
             actor_learning_rate=0.0015,
@@ -253,12 +253,12 @@ def train(env_key, seed, logger, verbose = False):
 
     # Create actor and critic train states
     actor_state = TrainState.create(
-        apply_fn=actor.apply,
+        apply_fn=jax.jit(actor.apply),
         params=actor_params,
         tx=optax.adam(hyperparams.actor_learning_rate, eps=hyperparams.adam_eps),
     )
     critic_state = TrainState.create(
-        apply_fn=critic.apply,
+        apply_fn=jax.jit(critic.apply),
         params=critic_params,
         tx=optax.adam(hyperparams.critic_learning_rate, eps=hyperparams.adam_eps),
     )
