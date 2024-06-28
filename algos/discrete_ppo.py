@@ -20,6 +20,7 @@ class Hyperparams:
     batch_count: int = flax.struct.field(pytree_node=False)
     rollout_len: int = flax.struct.field(pytree_node=False)
     discount_rate: float = flax.struct.field(pytree_node=False)
+    advantage_rate: float = flax.struct.field(pytree_node=False)
     num_minibatches: int = flax.struct.field(pytree_node=False)
     update_epochs: int = flax.struct.field(pytree_node=False)
     actor_learning_rate: float = flax.struct.field(pytree_node=False)
@@ -38,6 +39,7 @@ ENV_CONFIG = {
             batch_count=50,
             rollout_len=1000,
             discount_rate=0.99,
+            advantage_rate=0.95,
             num_minibatches=4,
             update_epochs=6,
             actor_learning_rate=0.002,
@@ -90,20 +92,21 @@ def run_rollout(env, env_params, length, actor_state, rng_key):
     a, n, last_observation, r = rollout_state
     return (transitions, last_observation)
 
-def calc_values(critic_state, transitions, last_observation, discount_rate):
+def calc_values(critic_state, transitions, last_observation, discount_rate, advantage_rate):
     """Calculates the advantage estimate at each time step."""
     values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_state.params, transitions.observation)
     last_value = critic_state.apply_fn(critic_state.params, last_observation)
 
-    def calc_advantage(next_value, value_info):
+    def calc_advantage(next_values, value_info):
+        next_value, next_advantage = next_values
         value, reward, done = value_info
         target = reward + discount_rate * next_value * (1 - done)
-        advantage = target - value
-        return (value, (advantage, target))
+        advantage = (target - value) + advantage_rate * discount_rate * next_advantage * (1 - done)
+        return ((value, advantage), (advantage, target))
 
     v, result = jax.lax.scan(
         calc_advantage,
-        init=last_value,
+        init=(last_value, jnp.float32(0)),
         xs=(values, transitions.reward, transitions.done),
         reverse=True,
     )
@@ -165,7 +168,13 @@ def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
     # Collect transitions and calculate advantages and targets
     rng_key, rollout_key, shuffle_key = jax.random.split(rng_key, 3)
     transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
-    advantages, targets = calc_values(critic_state, transitions, last_observation, hyperparams.discount_rate)
+    advantages, targets = calc_values(
+        critic_state,
+        transitions,
+        last_observation,
+        hyperparams.discount_rate,
+        hyperparams.advantage_rate,
+    )
 
     # Calculate rewards before batching
     total_rewards = calc_episode_rewards(transitions)
