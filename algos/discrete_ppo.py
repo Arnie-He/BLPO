@@ -34,15 +34,15 @@ ENV_CONFIG = {
         "critic_model": Critic,
         "critic_params": [(30, 15)],
         "hyperparams": Hyperparams(
-            num_updates=500,
-            batch_count=25,
-            rollout_len=2000,
+            num_updates=1000,
+            batch_count=50,
+            rollout_len=1000,
             discount_rate=0.99,
             num_minibatches=4,
-            update_epochs=4,
-            actor_learning_rate=0.00025,
+            update_epochs=6,
+            actor_learning_rate=0.002,
             actor_clip=0.2,
-            critic_learning_rate=0.004,
+            critic_learning_rate=0.002,
             adam_eps=1e-5,
         ),
     },
@@ -55,7 +55,7 @@ class Transition:
     action: jnp.ndarray
     reward: jnp.ndarray
     done: jnp.ndarray
-    #log_prob: jnp.ndarray
+    log_prob: jnp.ndarray
 
 def run_rollout(env, env_params, length, actor_state, rng_key):
     """Collects an actor policy rollout with a fixed number of steps."""
@@ -69,13 +69,14 @@ def run_rollout(env, env_params, length, actor_state, rng_key):
         rng_key, action_key, step_key = jax.random.split(rng_key, 3)
         action_dist = actor_state.apply_fn(actor_state.params, observation)
         action = action_dist.sample(seed=action_key)
+        log_prob = action_dist.log_prob(action)
 
         # Run environment step
         next_observation, next_state, reward, done, i = env.step(
             step_key, env_state, action, env_params,
         )
         transition = Transition(
-            observation, action, reward, done,
+            observation, action, reward, done, log_prob,
         )
 
         next_step = (actor_state, next_state, next_observation, rng_key)
@@ -111,13 +112,20 @@ def calc_values(critic_state, transitions, last_observation, discount_rate):
 
     return (advantages, targets)
 
-def update_actor(actor_state, transitions, advantages):
+def update_actor(actor_state, transitions, advantages, clip):
     """Calculates and applies the PPO gradient estimator at each time step."""
     def ppo_loss(params, transitions, advantages):
-        """Calculates the advantage estimator on a batch of transitions."""
+        """Calculates the clipped advantage estimator on a batch of transitions."""
         action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
         log_probs = action_dists.log_prob(transitions.action)
-        return -jnp.mean(advantages * log_probs)
+        prob_ratios = jnp.exp(log_probs - transitions.log_prob)
+
+        advantage_losses = prob_ratios * advantages
+        clipped_ratios = jnp.clip(prob_ratios, 1 - clip, 1 + clip)
+        clipped_losses = clipped_ratios * advantages
+
+        ppo_losses = jnp.minimum(advantage_losses, clipped_losses)
+        return -jnp.mean(ppo_losses)
 
     advantage_grad = jax.value_and_grad(ppo_loss)
     loss, grads = advantage_grad(actor_state.params, transitions, advantages)
@@ -176,7 +184,7 @@ def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
     def update_minibatch(train_state, batch_info):
         actor_state, critic_state = train_state
         transitions, advantages, targets = batch_info
-        actor_state, actor_loss = update_actor(actor_state, transitions, advantages)
+        actor_state, actor_loss = update_actor(actor_state, transitions, advantages, hyperparams.actor_clip)
         critic_state, critic_loss = update_critic(critic_state, transitions, targets)
         return ((actor_state, critic_state), (actor_loss, critic_loss))
 
