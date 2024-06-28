@@ -10,7 +10,7 @@ def run_on_cpu():
 run_on_cpu()
 
 logger = ChartLogger(("reward", "actor_loss", "critic_loss"))
-discrete_ppo.train("cartpole", 0, logger, verbose=True)
+discrete_ppo.train("catch", 0, logger, verbose=True)
 logger.plot_metric("reward")
 logger.plot_metric("actor_loss")
 logger.plot_metric("critic_loss")

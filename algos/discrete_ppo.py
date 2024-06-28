@@ -47,6 +47,25 @@ ENV_CONFIG = {
             adam_eps=1e-5,
         ),
     },
+    "catch": {
+        "actor_model": DiscreteActor,
+        "actor_params": [(30, 15), DynParam.ActionCount],
+        "critic_model": Critic,
+        "critic_params": [(30, 15)],
+        "hyperparams": Hyperparams(
+            num_updates=1000,
+            batch_count=50,
+            rollout_len=1000,
+            discount_rate=0.99,
+            advantage_rate=0.95,
+            num_minibatches=5,
+            update_epochs=4,
+            actor_learning_rate=0.0004,
+            actor_clip=0.2,
+            critic_learning_rate=0.01,
+            adam_eps=1e-5,
+        ),
+    },
 }
 
 @flax.struct.dataclass
