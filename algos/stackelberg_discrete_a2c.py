@@ -137,6 +137,7 @@ def run_rollout(env, env_params, length, actor_state, rng_key):
     a, n, last_observation, r = rollout_state
     return (transitions, last_observation)
 
+@jax.jit
 def calc_values(critic_state, transitions, last_observation, discount_rate):
     """Calculates the advantage estimate at each time step."""
     values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_state.params, transitions.observation)
@@ -159,32 +160,31 @@ def calc_values(critic_state, transitions, last_observation, discount_rate):
 
     return (advantages, targets)
 
-def update_actor(actor_state, transitions, advantages):
-    """Calculates and applies the advantage gradient estimator at each time step."""
+def actor_critic_loss(actor_state, critic_state, transitions, advantages, targets):
+    # f1-objective
     def advantage_loss(params, transitions, advantages):
         """Calculates the advantage estimator on a batch of transitions."""
         action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
         log_probs = action_dists.log_prob(transitions.action)
         return -jnp.mean(advantages * log_probs)
-
-    advantage_grad = jax.value_and_grad(advantage_loss)
-    loss, grads = advantage_grad(actor_state.params, transitions, advantages)
-
-    actor_state = actor_state.apply_gradients(grads=grads)
-    return (actor_state, loss)
-
-def update_critic(critic_state, transitions, targets):
-    """Calculates and applies the value target gradient at each time step."""
-    def target_loss(params, transitions, targets, critic_state):
+    # f2-objective
+    def target_loss(params, transitions, targets):
         """Calculates the mean squared error on a batch of transitions."""
         values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
         errors = jnp.square(targets - values)
         return jnp.mean(errors)
-    
-    target_grad = jax.value_and_grad(target_loss)
-    loss, grads = target_grad(critic_state.params, transitions, targets, critic_state)
+
+    # Update Leader with gradient grad_1_f1 + grad_x2*_x1.T times grad_2_f1
+    f1_grad = jax.value_and_grad(advantage_loss)
+    actor_loss, grad_1_f1 = f1_grad(actor_state.params, transitions, advantages)
+    f2_grad = jax.value_and_grad(target_loss)
+    critic_loss, grads = f2_grad(critic_state.params, transitions, targets)
+
+    actor_state = actor_state.apply_gradients(grads=grads)
+
     critic_state = critic_state.apply_gradients(grads=grads)
-    return (critic_state, loss)
+    return (actor_state, actor_loss, critic_state, critic_loss)
+
 
 def calc_episode_rewards(transitions):
     """Calculates the total real reward for each episode."""
