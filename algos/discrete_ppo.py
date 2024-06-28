@@ -5,7 +5,6 @@ import models.params
 from models.params import DynParam
 
 import flax
-import flax.linen as nn
 from flax.training.train_state import TrainState
 import functools
 import gymnax
@@ -35,14 +34,14 @@ ENV_CONFIG = {
         "critic_model": Critic,
         "critic_params": [(30, 15)],
         "hyperparams": Hyperparams(
-            num_updates=1000,
-            batch_count=50,
-            rollout_len=1000,
+            num_updates=500,
+            batch_count=25,
+            rollout_len=2000,
             discount_rate=0.99,
-            advantage_rate=0.95,
-            num_minibatches=4,
-            update_epochs=6,
-            actor_learning_rate=0.002,
+            advantage_rate=0,
+            num_minibatches=2,
+            update_epochs=10,
+            actor_learning_rate=0.0001,
             actor_clip=0.2,
             critic_learning_rate=0.002,
             adam_eps=1e-5,
