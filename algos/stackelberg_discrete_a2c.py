@@ -10,8 +10,11 @@ from flax.training.train_state import TrainState
 import functools
 import gymnax
 import jax
+from jax import grad
 import jax.numpy as jnp
 import optax
+from jax import flatten_util
+from jax.scipy.sparse.linalg import cg
 
 @functools.partial(flax.struct.dataclass, kw_only=True)
 class Hyperparams:
@@ -160,31 +163,66 @@ def calc_values(critic_state, transitions, last_observation, discount_rate):
 
     return (advantages, targets)
 
-def actor_critic_loss(actor_state, critic_state, transitions, advantages, targets):
-    # f1-objective
+# follower-objective
+def target_loss(params, transitions, targets, critic_state):
+    """Calculates the mean squared error on a batch of transitions."""
+    values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
+    errors = jnp.square(targets - values)
+    return jnp.mean(errors)
+
+def update_leaderactor(actor_state, critic_state, transitions, advantages, targets):
+    # Define the loss functions
     def advantage_loss(params, transitions, advantages):
-        """Calculates the advantage estimator on a batch of transitions."""
         action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
         log_probs = action_dists.log_prob(transitions.action)
         return -jnp.mean(advantages * log_probs)
-    # f2-objective
-    def target_loss(params, transitions, targets):
-        """Calculates the mean squared error on a batch of transitions."""
-        values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
+
+    def leader_f2_loss(actor_params, critic_params, transitions, targets):
+        action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(actor_params, transitions.observation)
+        log_probs = action_dists.log_prob(transitions.action)
+        values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
         errors = jnp.square(targets - values)
-        return jnp.mean(errors)
+        return jnp.mean(jnp.dot(log_probs, errors))
 
-    # Update Leader with gradient grad_1_f1 + grad_x2*_x1.T times grad_2_f1
-    f1_grad = jax.value_and_grad(advantage_loss)
-    actor_loss, grad_1_f1 = f1_grad(actor_state.params, transitions, advantages)
-    f2_grad = jax.value_and_grad(target_loss)
-    critic_loss, grads = f2_grad(critic_state.params, transitions, targets)
+    # Compute gradients
+    grad_J_theta, backward_theta = jax.vjp(advantage_loss, actor_state.params, transitions, advantages)
+    grad_J_omega, _ = jax.vjp(target_loss, critic_state.params, transitions, targets, critic_state)
 
-    actor_state = actor_state.apply_gradients(grads=grads)
+    # Compute Hessian and mixed partial derivatives using a function to solve the linear system
+    def solve_hessian_system(vector):
+        hvp = lambda omega_params: jax.jvp(
+            lambda params: jax.grad(leader_f2_loss, argnums=1)(actor_state.params, params, transitions, targets),
+            (critic_state.params,),
+            (vector,)
+        )[1]
+        return cg(hvp, vector, maxiter=10)[0]  # Use conjugate gradient to solve Hessian system
 
+    # Apply conjugate gradient to approximate Hessian inverse action
+    hessian_inv_grad_J_omega = solve_hessian_system(grad_J_omega)
+
+    # Computing the final gradient adjustment
+    jacobian_L_omega_theta, backward_jac = jax.vjp(
+        lambda actor_params: jax.grad(leader_f2_loss, argnums=0)(actor_params, critic_state.params, transitions, targets),
+        actor_state.params
+    )
+    final_adjustment = backward_jac(hessian_inv_grad_J_omega)[0]
+
+    # Update gradients
+    final_grads = jax.tree_util.tree_multimap(
+        lambda x, y: x - y, grad_J_theta, final_adjustment
+    )
+
+    # Update actor state
+    actor_state = actor_state.apply_gradients(grads=final_grads)
+
+    return actor_state, 0
+
+def update_critic(critic_state, transitions, targets):
+    """Calculates and applies the value target gradient at each time step."""
+    target_grad = jax.value_and_grad(target_loss)
+    loss, grads = target_grad(critic_state.params, transitions, targets, critic_state)
     critic_state = critic_state.apply_gradients(grads=grads)
-    return (actor_state, actor_loss, critic_state, critic_loss)
-
+    return (critic_state, loss)
 
 def calc_episode_rewards(transitions):
     """Calculates the total real reward for each episode."""
@@ -207,7 +245,7 @@ def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
     transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
     advantages, targets = calc_values(critic_state, transitions, last_observation, hyperparams.discount_rate)
 
-    actor_state, actor_loss = update_actor(actor_state, transitions, advantages)
+    actor_state, actor_loss = update_leaderactor(actor_state, critic_state, transitions, advantages, targets)
     critic_loss = 0
     for c in range(hyperparams.critic_updates):
         critic_state, critic_loss = update_critic(critic_state, transitions, targets)
