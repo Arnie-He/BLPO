@@ -10,11 +10,12 @@ from flax.training.train_state import TrainState
 import functools
 import gymnax
 import jax
-from jax import grad
+from jax import grad, jacfwd, jacrev
 import jax.numpy as jnp
 import optax
 from jax import flatten_util
 from jax.scipy.sparse.linalg import cg
+import json
 
 @functools.partial(flax.struct.dataclass, kw_only=True)
 class Hyperparams:
@@ -183,34 +184,54 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
         values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
         errors = jnp.square(targets - values)
         return jnp.mean(jnp.dot(log_probs, errors))
+    # Single Gradients
+    grad_theta_J = grad(advantage_loss, 0)(actor_state.params, transitions, advantages)
+    grad_w_J = grad(target_loss, 0)(critic_state.params, transitions, targets, critic_state)
 
-    # Compute gradients
-    grad_J_theta, backward_theta = jax.vjp(advantage_loss, actor_state.params, transitions, advantages)
-    grad_J_omega, _ = jax.vjp(target_loss, critic_state.params, transitions, targets, critic_state)
+    # Define function to compute the inverse hessian vector product (last two terms in the product)
+    def get_hvp_forward_over_reverse(actor_params, transitions, targets):
+        """
+        Returns the Hessian-vector product operator that uses forward-over-reverse
+        propagation.
+        """
+        grad_fun = jax.jit(
+            lambda x: jax.grad(leader_f2_loss, argnums=1)(actor_params, x, transitions, targets)
+        )
+        hvp_fun = jax.jit(
+            lambda x, v: jax.jvp(grad_fun, (x,), (v,))[1]
+        )
+        return lambda x, v: jax.block_until_ready(hvp_fun(x, v))
+    hvp_fun = get_hvp_forward_over_reverse(actor_state.params, transitions, targets)
+    hvp = hvp_fun(critic_state.params, grad_w_J)
+    # Compute the mixed partials(first teerm inthe product)
+    def mixed_partials(loss_fn, params, params2, transitions, targets):
+        def inner_fn(params, params2):
+            return loss_fn(params, params2, transitions, targets)
+        return jacfwd(jacrev(inner_fn, argnums=0), argnums=1)(params, params2)
+    mixed_partials_result = mixed_partials(leader_f2_loss, actor_state.params, critic_state.params, transitions, targets)
 
-    # Compute Hessian and mixed partial derivatives using a function to solve the linear system
-    def solve_hessian_system(vector):
-        hvp = lambda omega_params: jax.jvp(
-            lambda params: jax.grad(leader_f2_loss, argnums=1)(actor_state.params, params, transitions, targets),
-            (critic_state.params,),
-            (vector,)
-        )[1]
-        return cg(hvp, vector, maxiter=10)[0]  # Use conjugate gradient to solve Hessian system
-
-    # Apply conjugate gradient to approximate Hessian inverse action
-    hessian_inv_grad_J_omega = solve_hessian_system(grad_J_omega)
-
-    # Computing the final gradient adjustment
-    jacobian_L_omega_theta, backward_jac = jax.vjp(
-        lambda actor_params: jax.grad(leader_f2_loss, argnums=0)(actor_params, critic_state.params, transitions, targets),
-        actor_state.params
-    )
-    final_adjustment = backward_jac(hessian_inv_grad_J_omega)[0]
-
-    # Update gradients
-    final_grads = jax.tree_util.tree_multimap(
-        lambda x, y: x - y, grad_J_theta, final_adjustment
-    )
+    # compute the product inside the gradient
+    def multiply_and_sum_dicts(dict1, dict2, shape):
+        total_sum = jnp.zeros(shape)
+        for key in dict1:  # Assuming dict1 and dict2 have the same structure
+            if isinstance(dict1[key], dict):  
+                total_sum += multiply_and_sum_dicts(dict1[key], dict2[key], shape)
+            else:
+                # total_sum += jax.vmap(lambda x, y: jnp.vdot(x, y), (range(shape), None), 0)(dict1[key], dict2[key])
+                a = dict1[key]
+                b = dict2[key]
+                axes_b = list(range(len(b.shape)))
+                axes_a = [x + len(a.shape) - len(b.shape) for x in axes_b]
+                total_sum += jnp.tensordot(a, b, (axes_a, axes_b))
+        return total_sum
+    
+    final_product = grad_theta_J
+    for key1 in grad_theta_J['params']:
+        for key2 in grad_theta_J['params'][key1]:
+            # print(grad_theta_J)
+            final_product['params'][key1][key2] = multiply_and_sum_dicts(mixed_partials_result['params'][key1][key2], hvp, grad_theta_J['params'][key1][key2].shape)
+    
+    final_grads = jax.tree.map(lambda g,f: g-f, grad_theta_J, final_product)
 
     # Update actor state
     actor_state = actor_state.apply_gradients(grads=final_grads)

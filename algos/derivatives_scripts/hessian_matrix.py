@@ -109,18 +109,18 @@ output_data = {
     "Hessian_shape": to_json_serializable(hessian),
 }
 
-def shape(obj):
+def tree_shape(obj):
     if isinstance(obj, jnp.ndarray):
         return obj.shape
     elif isinstance(obj, dict):
-        return {k: shape(v) for k, v in obj.items()}
+        return {k: tree_shape(v) for k, v in obj.items()}
 
 # Save outputs to a JSON file
 with open('output.json', 'w') as f:
     # json.dump(output_data, f, indent=4)
-    json.dump(shape(hvp), f, indent=4)
-    json.dump(shape(mixed_partials_result), f, indent=4)
-    json.dump(shape(grads), f, indent=4)
-    json.dump(shape(finalresult), f, indent=4)
+    json.dump(tree_shape(hvp), f, indent=4)
+    json.dump(tree_shape(mixed_partials_result), f, indent=4)
+    json.dump(tree_shape(grads), f, indent=4)
+    json.dump(tree_shape(finalresult), f, indent=4)
 
 print("Output written to output.json")
