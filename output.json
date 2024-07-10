@@ -35,9 +35,7 @@
             4
         ]
     }
-}
-### Mixed Partials
-{
+}{
     "Dense_0": {
         "bias": {
             "Dense_0": {
@@ -344,9 +342,35 @@
             }
         }
     }
-}
-### Result shape
-{
+}{
+    "Dense_0": {
+        "bias": [
+            12
+        ],
+        "kernel": [
+            10,
+            12
+        ]
+    },
+    "Dense_1": {
+        "bias": [
+            8
+        ],
+        "kernel": [
+            12,
+            8
+        ]
+    },
+    "Dense_2": {
+        "bias": [
+            4
+        ],
+        "kernel": [
+            8,
+            4
+        ]
+    }
+}{
     "Dense_0": {
         "bias": [
             12

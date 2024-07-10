@@ -73,8 +73,27 @@ def get_hvp_forward_over_reverse(params, model, batch, model2, batch2):
 hvp_fun = get_hvp_forward_over_reverse(params, model, batch, model2, batch2)
 hvp = hvp_fun(params2, grad_w_J)
 
-# total_minus_der = mixed_partials_result @ hvp
+def multiply_and_sum_dicts(dict1, dict2, shape):
+    total_sum = jnp.zeros(shape)
+    for key in dict1:  # Assuming dict1 and dict2 have the same structure
+        if isinstance(dict1[key], dict):  
+            total_sum += multiply_and_sum_dicts(dict1[key], dict2[key], shape)
+        else:
+            # total_sum += jax.vmap(lambda x, y: jnp.vdot(x, y), (range(shape), None), 0)(dict1[key], dict2[key])
+            a = dict1[key]
+            b = dict2[key]
+            axes_b = list(range(len(b.shape)))
+            axes_a = [x + len(a.shape) - len(b.shape) for x in axes_b]
+            total_sum += jnp.tensordot(a, b, (axes_a, axes_b))
+    return total_sum
 
+one_item = mixed_partials_result["Dense_0"]["bias"]
+print(multiply_and_sum_dicts(one_item, hvp, grads["Dense_0"]["bias"].shape))
+
+finalresult = grads
+for key1 in grads:
+    for key2 in grads[key1]:
+        finalresult[key1][key2] = multiply_and_sum_dicts(mixed_partials_result[key1][key2], hvp, grads[key1][key2].shape)
 
 # Convert data to JSON serializable format
 def to_json_serializable(obj):
@@ -102,5 +121,6 @@ with open('output.json', 'w') as f:
     json.dump(shape(hvp), f, indent=4)
     json.dump(shape(mixed_partials_result), f, indent=4)
     json.dump(shape(grads), f, indent=4)
+    json.dump(shape(finalresult), f, indent=4)
 
 print("Output written to output.json")
