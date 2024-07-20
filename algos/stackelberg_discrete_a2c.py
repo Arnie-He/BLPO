@@ -327,18 +327,18 @@ def train(env_key, seed, logger, verbose = False):
     logger.set_interval(hyperparams.rollout_len)
     logger.set_info(
         "reward",
-        f"[{ENV_NAMES[env_key]}] Actor-Critic average reward",
-        f"charts/actor_critic/{env_key}_reward.png",
+        f"[{ENV_NAMES[env_key]}] SA2C average reward",
+        f"charts/stackelberg_a2c/{env_key}_reward.png",
     )
     logger.set_info(
         "actor_loss",
         f"[{ENV_NAMES[env_key]}] Actor loss",
-        f"charts/actor_critic/{env_key}_actor_loss.png",
+        f"charts/stackelberg_a2c/{env_key}_actor_loss.png",
     )
     logger.set_info(
         "critic_loss",
         f"[{ENV_NAMES[env_key]}] Critic loss",
-        f"charts/actor_critic/{env_key}_critic_loss.png",
+        f"charts/stackelberg_a2c/{env_key}_critic_loss.png",
     )
 
     # Run the training loop
