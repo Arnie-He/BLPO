@@ -142,10 +142,10 @@ def run_rollout(env, env_params, length, actor_state, rng_key):
     return (transitions, last_observation)
 
 @jax.jit
-def calc_values(critic_state, transitions, last_observation, discount_rate):
+def calc_values(params, critic_state, transitions, last_observation, discount_rate):
     """Calculates the advantage estimate at each time step."""
-    values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_state.params, transitions.observation)
-    last_value = critic_state.apply_fn(critic_state.params, last_observation)
+    values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
+    last_value = critic_state.apply_fn(params, last_observation)
 
     def calc_advantage(next_value, value_info):
         value, reward, done = value_info
@@ -163,91 +163,6 @@ def calc_values(critic_state, transitions, last_observation, discount_rate):
     advantages = (advantages - jnp.mean(advantages)) / (jnp.std(advantages) + 1e-8)
 
     return (advantages, targets)
-
-# follower-objective
-def target_loss(params, transitions, targets, critic_state):
-    """Calculates the mean squared error on a batch of transitions."""
-    values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
-    errors = jnp.square(targets - values)
-    return jnp.mean(errors)
-
-def update_leaderactor(actor_state, critic_state, transitions, advantages, targets):
-    # Define the loss functions
-    def advantage_loss(params, transitions, advantages):
-        action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
-        log_probs = action_dists.log_prob(transitions.action)
-        return -jnp.mean(advantages * log_probs)
-
-    def leader_f2_loss(actor_params, critic_params, transitions, targets):
-        action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(actor_params, transitions.observation)
-        log_probs = action_dists.log_prob(transitions.action)
-        values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
-        errors = jnp.square(targets - values)
-        # errors = targets-values
-        return jnp.mean(jnp.dot(log_probs, errors))
-    # Single Gradients
-    grad_theta_J = grad(advantage_loss, 0)(actor_state.params, transitions, advantages)
-    grad_w_J = grad(target_loss, 0)(critic_state.params, transitions, targets, critic_state)
-
-    # Define function to compute the inverse hessian vector product (last two terms in the product)
-    def get_hvp_forward_over_reverse(actor_params, transitions, targets):
-        """
-        Returns the Hessian-vector product operator that uses forward-over-reverse
-        propagation.
-        """
-        grad_fun = jax.jit(
-            lambda x: jax.grad(leader_f2_loss, argnums=1)(actor_params, x, transitions, targets)
-        )
-        hvp_fun = jax.jit(
-            lambda x, v: jax.jvp(grad_fun, (x,), (v,))[1]
-        )
-        return lambda x, v: jax.block_until_ready(hvp_fun(x, v))
-    hvp_fun = get_hvp_forward_over_reverse(actor_state.params, transitions, targets)
-    hvp = hvp_fun(critic_state.params, grad_w_J)
-    # Compute the mixed partials(first teerm inthe product)
-    def mixed_partials(loss_fn, params, params2, transitions, targets):
-        def inner_fn(params, params2):
-            return loss_fn(params, params2, transitions, targets)
-        return jacfwd(jacrev(inner_fn, argnums=0), argnums=1)(params, params2)
-    mixed_partials_result = mixed_partials(leader_f2_loss, actor_state.params, critic_state.params, transitions, targets)
-
-    # compute the product inside the gradient
-    def multiply_and_sum_dicts(dict1, dict2, shape):
-        total_sum = jnp.zeros(shape)
-        for key in dict1:  # Assuming dict1 and dict2 have the same structure
-            if isinstance(dict1[key], dict):  
-                total_sum += multiply_and_sum_dicts(dict1[key], dict2[key], shape)
-            else:
-                # total_sum += jax.vmap(lambda x, y: jnp.vdot(x, y), (range(shape), None), 0)(dict1[key], dict2[key])
-                a = dict1[key]
-                b = dict2[key]
-                axes_b = list(range(len(b.shape)))
-                axes_a = [x + len(a.shape) - len(b.shape) for x in axes_b]
-                total_sum += jnp.tensordot(a, b, (axes_a, axes_b))
-        return total_sum
-    
-    final_grads = grad_theta_J
-    for key1 in grad_theta_J['params']:
-        for key2 in grad_theta_J['params'][key1]:
-            result = multiply_and_sum_dicts(
-                mixed_partials_result['params'][key1][key2],
-                hvp,
-                grad_theta_J['params'][key1][key2].shape
-            )
-            final_grads["params"][key1][key2] = \
-                result - final_grads["params"][key1][key2]
-            # final_grads["params"][key1][key2] = \
-            #    final_grads["params"][key1][key2] - result
-
-    actor_state = actor_state.apply_gradients(grads=final_grads)
-    return (actor_state, 0)
-
-def update_critic(critic_state, transitions, targets):
-    """Calculates and applies the value target gradient at each time step."""
-    target_grad = jax.value_and_grad(target_loss)
-    loss, grads = target_grad(critic_state.params, transitions, targets, critic_state)
-    critic_state = critic_state.apply_gradients(grads=grads)
-    return (critic_state, loss)
 
 def calc_episode_rewards(transitions):
     """Calculates the total real reward for each episode."""
@@ -268,16 +183,46 @@ def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
     """Runs an iteration of the training loop with the vanilla parallel update."""
     rng_key, rollout_key = jax.random.split(rng_key, 2)
     transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
-    advantages, targets = calc_values(critic_state, transitions, last_observation, hyperparams.discount_rate)
 
-    actor_state, actor_loss = update_leaderactor(actor_state, critic_state, transitions, advantages, targets)
-    critic_loss = 0
-    for c in range(hyperparams.critic_updates):
-        critic_state, critic_loss = update_critic(critic_state, transitions, targets)
+    def L_in(actor_params, critic_state, critic_params):
+        advantages, _ = calc_values(critic_params, critic_state, transitions, last_observation, hyperparams.discount_rate)
+        action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(actor_params, transitions.observation)
+        log_probs = action_dists.log_prob(transitions.action)
+        return -jnp.mean(advantages * log_probs)
+    
+    def L_out(actor_params, critic_state, critic_params):
+        _, targets = calc_values(critic_params, critic_state, transitions, last_observation, hyperparams.discount_rate)
+        action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(actor_params, transitions.observation)
+        log_probs = action_dists.log_prob(transitions.action)
+        values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
+        errors = jnp.square(targets - values)
+        return jnp.mean(jnp.dot(log_probs, errors))
+    
+    n_outer_loop = int(2)
+    n_inner_loop = int(2)
 
+    for _ in range(n_outer_loop):
+        for _ in range(n_inner_loop):
+            phi_grad = jax.grad(L_in, 2)(actor_state.params, critic_state, critic_state.params)
+            critic_state = critic_state.apply_gradients(grads=phi_grad)
+        phi_hat = critic_state.params
+        # Start Equilibrium propogation
+        beta = 10e-3
+        n_eq_phi_loop = int(2)
+        def L_total(actor_params, critic_state, critic_params, beta):
+            return L_in(actor_params, critic_state, critic_params) + beta * L_out(actor_params, critic_state, critic_params)
+        for _ in range(n_eq_phi_loop):
+            phi_grad = jax.grad(L_total, 2)(actor_state.params, critic_state, critic_state.params, beta)
+            critic_state = critic_state.apply_gradients(grads=phi_grad)
+        
+        diff = jax.tree_map(lambda x, y: x - y, jax.grad(L_total, 0)(actor_state.params, critic_state, critic_state.params, beta), jax.grad(L_total, 0)(actor_state.params, critic_state, phi_hat, 0))
+        grad_theta = jax.tree_map(lambda x: x / beta, diff)
+        actor_state = actor_state.apply_gradients(grads=grad_theta)
+    
     total_rewards = calc_episode_rewards(transitions)
     average_reward = jnp.sum(total_rewards * transitions.done) / jnp.sum(transitions.done)
-    return (actor_state, critic_state, (average_reward, actor_loss, critic_loss), rng_key)
+    # Ignore actorstate and critic state loss for now
+    return (actor_state, critic_state, (average_reward, 0, 0), rng_key)
 
 @functools.partial(jax.jit, static_argnums=0)
 def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams):
@@ -332,18 +277,18 @@ def train(env_key, seed, logger, verbose = False):
     logger.set_info(
         "reward",
         f"[{ENV_NAMES[env_key]}] SA2C average reward",
-        f"charts/stackelberg_a2c/{env_key}_reward.png",
+        f"charts/stackelberg_eq_a2c/{env_key}_reward.png",
     )
-    logger.set_info(
-        "actor_loss",
-        f"[{ENV_NAMES[env_key]}] Actor loss",
-        f"charts/stackelberg_a2c/{env_key}_actor_loss.png",
-    )
-    logger.set_info(
-        "critic_loss",
-        f"[{ENV_NAMES[env_key]}] Critic loss",
-        f"charts/stackelberg_a2c/{env_key}_critic_loss.png",
-    )
+    # logger.set_info(
+    #     "actor_loss",
+    #     f"[{ENV_NAMES[env_key]}] Actor loss",
+    #     f"charts/stackelberg_eq_a2c/{env_key}_actor_loss.png",
+    # )
+    # logger.set_info(
+    #     "critic_loss",
+    #     f"[{ENV_NAMES[env_key]}] Critic loss",
+    #     f"charts/stackelberg_eq_a2c/{env_key}_critic_loss.png",
+    # )
 
     # Run the training loop
     num_batches = int(hyperparams.num_updates / hyperparams.batch_count)

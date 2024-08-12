@@ -15,6 +15,7 @@ import jax.numpy as jnp
 import optax
 from jax import flatten_util
 from jax.scipy.sparse.linalg import cg
+import jaxopt
 import json
 
 @functools.partial(flax.struct.dataclass, kw_only=True)
@@ -178,68 +179,24 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
         log_probs = action_dists.log_prob(transitions.action)
         return -jnp.mean(advantages * log_probs)
 
-    def leader_f2_loss(actor_params, critic_params, transitions, targets):
+    def leader_f2_loss(critic_params, actor_params, transitions, targets):
         action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(actor_params, transitions.observation)
         log_probs = action_dists.log_prob(transitions.action)
         values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
         errors = jnp.square(targets - values)
         # errors = targets-values
         return jnp.mean(jnp.dot(log_probs, errors))
+    
+    def leader_f2_solution(critic_params, actor_params, transitions, targets):
+        gd = jaxopt.GradientDescent(fun=leader_f2_loss, maxiter=500, implicit_diff=True)
+        return gd.run(critic_params, actor_params=actor_params, transitions=transitions, targets=targets).params
+    
     # Single Gradients
     grad_theta_J = grad(advantage_loss, 0)(actor_state.params, transitions, advantages)
     grad_w_J = grad(target_loss, 0)(critic_state.params, transitions, targets, critic_state)
 
-    # Define function to compute the inverse hessian vector product (last two terms in the product)
-    def get_hvp_forward_over_reverse(actor_params, transitions, targets):
-        """
-        Returns the Hessian-vector product operator that uses forward-over-reverse
-        propagation.
-        """
-        grad_fun = jax.jit(
-            lambda x: jax.grad(leader_f2_loss, argnums=1)(actor_params, x, transitions, targets)
-        )
-        hvp_fun = jax.jit(
-            lambda x, v: jax.jvp(grad_fun, (x,), (v,))[1]
-        )
-        return lambda x, v: jax.block_until_ready(hvp_fun(x, v))
-    hvp_fun = get_hvp_forward_over_reverse(actor_state.params, transitions, targets)
-    hvp = hvp_fun(critic_state.params, grad_w_J)
-    # Compute the mixed partials(first teerm inthe product)
-    def mixed_partials(loss_fn, params, params2, transitions, targets):
-        def inner_fn(params, params2):
-            return loss_fn(params, params2, transitions, targets)
-        return jacfwd(jacrev(inner_fn, argnums=0), argnums=1)(params, params2)
-    mixed_partials_result = mixed_partials(leader_f2_loss, actor_state.params, critic_state.params, transitions, targets)
+    grad_Optcritic = jax.jacobian(leader_f2_solution, argnums=1)(critic_state.params, actor_state.params, transitions, targets)
 
-    # compute the product inside the gradient
-    def multiply_and_sum_dicts(dict1, dict2, shape):
-        total_sum = jnp.zeros(shape)
-        for key in dict1:  # Assuming dict1 and dict2 have the same structure
-            if isinstance(dict1[key], dict):  
-                total_sum += multiply_and_sum_dicts(dict1[key], dict2[key], shape)
-            else:
-                # total_sum += jax.vmap(lambda x, y: jnp.vdot(x, y), (range(shape), None), 0)(dict1[key], dict2[key])
-                a = dict1[key]
-                b = dict2[key]
-                axes_b = list(range(len(b.shape)))
-                axes_a = [x + len(a.shape) - len(b.shape) for x in axes_b]
-                total_sum += jnp.tensordot(a, b, (axes_a, axes_b))
-        return total_sum
-    
-    final_grads = grad_theta_J
-    for key1 in grad_theta_J['params']:
-        for key2 in grad_theta_J['params'][key1]:
-            result = multiply_and_sum_dicts(
-                mixed_partials_result['params'][key1][key2],
-                hvp,
-                grad_theta_J['params'][key1][key2].shape
-            )
-            final_grads["params"][key1][key2] = \
-                result - final_grads["params"][key1][key2]
-            # final_grads["params"][key1][key2] = \
-            #    final_grads["params"][key1][key2] - result
-
-    actor_state = actor_state.apply_gradients(grads=final_grads)
     return (actor_state, 0)
 
 def update_critic(critic_state, transitions, targets):
