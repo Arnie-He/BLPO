@@ -189,21 +189,23 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
     grad_theta_J = grad(advantage_loss, 0)(actor_state.params, transitions, advantages)
     grad_w_J = grad(target_loss, 0)(critic_state.params, transitions, targets, critic_state)
 
-    # Define function to compute the inverse hessian vector product (last two terms in the product)
-    def get_hvp_forward_over_reverse(actor_params, transitions, targets):
-        """
-        Returns the Hessian-vector product operator that uses forward-over-reverse
-        propagation.
-        """
-        grad_fun = jax.jit(
-            lambda x: jax.grad(leader_f2_loss, argnums=1)(actor_params, x, transitions, targets)
-        )
-        hvp_fun = jax.jit(
-            lambda x, v: jax.jvp(grad_fun, (x,), (v,))[1]
-        )
-        return lambda x, v: jax.block_until_ready(hvp_fun(x, v))
-    hvp_fun = get_hvp_forward_over_reverse(actor_state.params, transitions, targets)
-    hvp = hvp_fun(critic_state.params, grad_w_J)
+    # # Define function to compute the inverse hessian vector product (last two terms in the product)
+    # def get_hvp_forward_over_reverse(actor_params, transitions, targets):
+    #     """
+    #     Returns the Hessian-vector product operator that uses forward-over-reverse
+    #     propagation.
+    #     """
+    #     grad_fun = jax.jit(
+    #         lambda x: jax.grad(leader_f2_loss, argnums=1)(actor_params, x, transitions, targets)
+    #     )
+    #     hvp_fun = jax.jit(
+    #         lambda x, v: jax.jvp(grad_fun, (x,), (v,))[1]
+    #     )
+    #     return lambda x, v: jax.block_until_ready(hvp_fun(x, v))
+    # hvp_fun = get_hvp_forward_over_reverse(actor_state.params, transitions, targets)
+    # hvp = hvp_fun(critic_state.params, grad_w_J)
+
+    
     # Compute the mixed partials(first teerm inthe product)
     def mixed_partials(loss_fn, params, params2, transitions, targets):
         def inner_fn(params, params2):
