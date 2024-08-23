@@ -206,6 +206,7 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
     # hvp = hvp_fun(critic_state.params, grad_w_J)
 
     
+    
     # Compute the mixed partials(first teerm inthe product)
     def mixed_partials(loss_fn, params, params2, transitions, targets):
         def inner_fn(params, params2):
