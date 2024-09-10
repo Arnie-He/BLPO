@@ -218,6 +218,20 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
     )
 
     actor_state = actor_state.apply_gradients(grads=final_product)
+
+
+    hypergradient = jax.tree_util.tree_map(lambda x, y: x - y, grad_theta_J, final_product)
+    
+    #print all norms
+    print('pm_grad', optax.global_norm(pm_grad))
+    print('pm_grad_pm_log_probs', optax.global_norm(pm_grad_pm_log_probs))
+    print('lm_grad_pm', optax.global_norm(lm_grad_pm))
+    print('inverse_hvp', optax.global_norm(inverse_hvp))
+    print('final_product', optax.global_norm(final_product))
+
+    print('policy_grad', optax.global_norm(policy_grad))
+    print('hypergradient', optax.global_norm(hypergradient))
+
     return (actor_state, 0)
 
 def update_critic(critic_state, transitions, targets):
