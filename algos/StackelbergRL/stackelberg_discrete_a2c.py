@@ -17,6 +17,8 @@ from jax import flatten_util
 from jax.scipy.sparse.linalg import cg
 import json
 
+# jax.config.update('jax_disable_jit', True)
+
 @functools.partial(flax.struct.dataclass, kw_only=True)
 class Hyperparams:
     """A data class that stores hyperparameter configurations."""
@@ -186,7 +188,9 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
         # errors = targets-values
         return jnp.mean(jnp.dot(log_probs, errors))
     # Single Gradients
-    grad_theta_J = grad(advantage_loss, 0)(actor_state.params, transitions, advantages)
+    target_advantage_grad = jax.value_and_grad(advantage_loss)
+    advantage_loss_val, grad_theta_J = target_advantage_grad(actor_state.params, transitions, advantages)
+    leader_f2_loss_val = leader_f2_loss(actor_state.params, critic_state.params, transitions, targets)
     grad_w_J = grad(target_loss, 0)(critic_state.params, transitions, targets, critic_state)
 
     def hvp(v):
@@ -217,22 +221,21 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
         (inverse_hvp,)
     )
 
+    # negated_final_product = jax.tree_map(lambda x: -x, final_product)
     actor_state = actor_state.apply_gradients(grads=final_product)
-
 
     hypergradient = jax.tree_util.tree_map(lambda x, y: x - y, grad_theta_J, final_product)
     
-    #print all norms
-    print('pm_grad', optax.global_norm(pm_grad))
-    print('pm_grad_pm_log_probs', optax.global_norm(pm_grad_pm_log_probs))
-    print('lm_grad_pm', optax.global_norm(lm_grad_pm))
-    print('inverse_hvp', optax.global_norm(inverse_hvp))
-    print('final_product', optax.global_norm(final_product))
+    # Calculate the norms
+    grad_theta_J_norm = optax.global_norm(grad_theta_J)
+    grad_w_J_norm = optax.global_norm(grad_w_J)
+    inverse_hvp_norm = optax.global_norm(inverse_hvp)
+    final_product_norm = optax.global_norm(final_product)
+    hypergradient_norm = optax.global_norm(hypergradient)
 
-    print('policy_grad', optax.global_norm(policy_grad))
-    print('hypergradient', optax.global_norm(hypergradient))
-
-    return (actor_state, 0)
+    return (actor_state, (
+        advantage_loss_val, leader_f2_loss_val, grad_theta_J_norm, grad_w_J_norm, 
+        inverse_hvp_norm, final_product_norm, hypergradient_norm))
 
 def update_critic(critic_state, transitions, targets):
     """Calculates and applies the value target gradient at each time step."""
@@ -257,19 +260,22 @@ def calc_episode_rewards(transitions):
     return rewards
 
 def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams):
-    """Runs an iteration of the training loop with the vanilla parallel update."""
     rng_key, rollout_key = jax.random.split(rng_key, 2)
     transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
     advantages, targets = calc_values(critic_state, transitions, last_observation, hyperparams.discount_rate)
 
-    actor_state, actor_loss = update_leaderactor(actor_state, critic_state, transitions, advantages, targets)
+    actor_state, norms = update_leaderactor(actor_state, critic_state, transitions, advantages, targets)
+    # advantage_loss_val, leader_f2_loss_val, grad_theta_J_norm, grad_w_J_norm, inverse_hvp_norm, final_product_norm, hypergradient_norm = norms
     critic_loss = 0
     for c in range(hyperparams.critic_updates):
         critic_state, critic_loss = update_critic(critic_state, transitions, targets)
 
     total_rewards = calc_episode_rewards(transitions)
     average_reward = jnp.sum(total_rewards * transitions.done) / jnp.sum(transitions.done)
-    return (actor_state, critic_state, (average_reward, actor_loss, critic_loss), rng_key)
+    
+    # Return the metrics including the gradient norms
+    return (actor_state, critic_state, (average_reward, norms, critic_loss), rng_key)
+
 
 @functools.partial(jax.jit, static_argnums=0)
 def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams):
@@ -279,6 +285,7 @@ def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams):
         actor_state, critic_state, rng_key = batch_state
         actor_state, critic_state, metrics, rng_key = \
             run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
+        jax.debug.print("reward: {x}", x=metrics[0])
         return ((actor_state, critic_state, rng_key), metrics)
 
     batch_state, batch_metrics = jax.lax.scan(
@@ -319,33 +326,52 @@ def train(env_key, seed, logger, verbose = False):
         tx=optax.adam(hyperparams.critic_learning_rate, eps=hyperparams.adam_eps),
     )
 
-    # Set logger info
-    logger.set_interval(hyperparams.rollout_len)
-    logger.set_info(
+    # log gradient norms over time
+    metrics = [
         "reward",
-        f"[{ENV_NAMES[env_key]}] SA2C average reward",
-        f"charts/stackelberg_a2c/{env_key}_reward.png",
-    )
-    logger.set_info(
-        "actor_loss",
-        f"[{ENV_NAMES[env_key]}] Actor loss",
-        f"charts/stackelberg_a2c/{env_key}_actor_loss.png",
-    )
-    logger.set_info(
+        "advantage_loss",
+        "leader_f2_loss",
         "critic_loss",
-        f"[{ENV_NAMES[env_key]}] Critic loss",
-        f"charts/stackelberg_a2c/{env_key}_critic_loss.png",
-    )
+        "policy_grad_norm",
+        "critic_grad_norm",
+        "inverse_hvp_norm",
+        "final_product_norm",
+        "hypergradient_norm",
+    ]
 
-    # Run the training loop
+    from datetime import datetime
+    import os
+    current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    folder_path = f"charts/stackelberg_a2c/{current_datetime}"
+    os.makedirs(folder_path, exist_ok=True)
+
+    logger.set_interval(hyperparams.rollout_len)
+    for metric in metrics:
+        file_path = f"{folder_path}/{env_key}_{metric}.png"
+        
+        logger.set_info(
+            metric,
+            f"[{ENV_NAMES[env_key]}] SA2C {metric}",
+            file_path,
+        )
+
+    # Training loop
     num_batches = int(hyperparams.num_updates / hyperparams.batch_count)
+    if(verbose):
+        print("Training started. Please let the process finish to save the metrics.")
+
     for b in range(num_batches):
         actor_state, critic_state, batch_metrics, rng_key = \
             run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams)
+        
+        # Unpack the metrics and norms
+        # average_reward, advantage_loss_val, leader_f2_loss_val, grad_theta_J_norm, grad_w_J_norm, inverse_hvp_norm, final_product_norm, hypergradient_norm, critic_loss = batch_metrics
+
+        average_reward, norms, critic_loss = batch_metrics
+        # Log other metrics
         logger.log_metrics({
-            "reward": batch_metrics[0],
-            "actor_loss": batch_metrics[1],
-            "critic_loss": batch_metrics[2],
+            "reward": average_reward,
         })
+
         if verbose:
-            print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {batch_metrics[0][-1]}")
+            print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {average_reward[-1]}")

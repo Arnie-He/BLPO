@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import flax.linen as nn
 from jax import jacfwd, jacrev, grad
 from jax import flatten_util
+import optax
 
 class MLP(nn.Module):
     features: Sequence[int]
@@ -72,6 +73,8 @@ def get_hvp_forward_over_reverse(params, model, batch, model2, batch2):
 
 hvp_fun = get_hvp_forward_over_reverse(params, model, batch, model2, batch2)
 hvp = hvp_fun(params2, grad_w_J)
+
+print("global norm=", optax.global_norm(mixed_partials_result))
 
 def multiply_and_sum_dicts(dict1, dict2, shape):
     total_sum = jnp.zeros(shape)
