@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--cpu", default=False, action="store_true", help="Run on CPU")
     parser.add_argument("--task", type=str, default="cartpole", help="Specify the environment/task")
     parser.add_argument("--algo", type=str, default="Stackelberg", choices=algos.keys(), help="Specify the algorithm")
+    parser.add_argument("--vanilla", type=bool, default=False)
 
     args = parser.parse_args()
 
@@ -29,22 +30,25 @@ def main():
     if args.cpu:
         run_on_cpu()
 
-    logger = ChartLogger(( "reward", "advantage_loss", "leader_f2_loss","critic_loss",
-            "policy_grad_norm", "critic_grad_norm", "inverse_hvp_norm",
-            "final_product_norm", "hypergradient_norm"))
+    metrics = [
+        "reward",
+        "grad_theta_J_norms",
+        "hypergradient_norms",
+        "final_product_norms",
+        "critic_loss"
+    ]
+
+    logger = ChartLogger(( "reward", "grad_theta_J_norms", "hypergradient_norms",
+        "final_product_norms", "critic_loss"))
     algo = algos[args.algo]
-    algo.train(args.task, 0, logger, verbose=True)
+    algo.train(args.task, 0, logger, verbose=True, metrics=metrics, vanilla=args.vanilla)
 
     # Plot metrics
     logger.plot_metric("reward")
-    logger.plot_metric("advantage_loss")
-    logger.plot_metric("leader_f2_loss")
+    logger.plot_metric("grad_theta_J_norms")
+    logger.plot_metric("hypergradient_norms")
+    logger.plot_metric("final_product_norms")
     logger.plot_metric("critic_loss")
-    logger.plot_metric("policy_grad_norm")
-    logger.plot_metric("critic_grad_norm")
-    logger.plot_metric("inverse_hvp_norm")
-    logger.plot_metric("final_product_norm")
-    logger.plot_metric("hypergradient_norm")
 
 if __name__ == "__main__":
     main()

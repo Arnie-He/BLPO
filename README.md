@@ -1,3 +1,3 @@
-# RL Algorithms
+# HyperGradient-RL
 
-This repository includes implementations of reinforcement learning algorithms for MDPs, mainly policy gradient methods.
+To install, see requirements in requirements.txt. 
