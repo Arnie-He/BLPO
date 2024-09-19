@@ -1,0 +1,8 @@
+Sept. 18th 
+
+Done:
+1. Corrected hvp gradient and mixed-partial, and jnp.mean(...dot).
+2. Small networks on Catch and cartpole helped invertibility.
+    1- Never had issue with cg on catch (doesn't diverge)
+    2- It diverges on cartpole (gradient being nans)
+3. Clipping helped a lot, but still only to a similar performance of normal actor critic's.
