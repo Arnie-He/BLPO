@@ -197,7 +197,7 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
             return jax.flatten_util.ravel_pytree(
                 jax.grad(target_loss, argnums=0)(unravel_fn(p), transitions, targets, critic_state)
             )[0]
-        lambda_reg = 1.0
+        lambda_reg = 0.0
         hvp = jax.jvp(loss_grad_flat, (critic_params_flat,), (v,))[1] + lambda_reg * v
         return hvp
     
@@ -236,7 +236,6 @@ def clip_grad_norm(grad, max_norm):
     norm = optax.global_norm(grad)
     factor = jnp.minimum(max_norm, max_norm / (norm + 1e-6))
     return jax.tree_map((lambda x: x * factor), grad)
-
 
 def update_critic(critic_state, transitions, targets):
     """Calculates and applies the value target gradient at each time step."""
@@ -293,7 +292,7 @@ def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, 
     actor_state, critic_state, rng_key = batch_state
     return (actor_state, critic_state, batch_metrics, rng_key)
 
-def train(env_key, seed, logger, verbose = False, metrics=None, vanilla=False):
+def train(env_key, seed, logger, verbose = False, metrics=None, vanilla=False, save_charts=False, description=None):
     # Create environment
     config = ENV_CONFIG[env_key]
     hyperparams = config["hyperparams"]
@@ -323,21 +322,24 @@ def train(env_key, seed, logger, verbose = False, metrics=None, vanilla=False):
         tx=optax.adam(hyperparams.critic_learning_rate, eps=hyperparams.adam_eps),
     )
 
-    from datetime import datetime
-    import os
-    current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    folder_path = f"charts/stackelberg_a2c/{current_datetime}"
-    os.makedirs(folder_path, exist_ok=True)
+    if(save_charts):
+        from datetime import datetime
+        import os
+        current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        if(description==None): 
+            description=current_datetime
+        folder_path = f"charts/stackelberg_Actor/{description}"
+        os.makedirs(folder_path, exist_ok=True)
 
-    logger.set_interval(hyperparams.rollout_len)
-    for metric in metrics:
-        file_path = f"{folder_path}/{env_key}_{metric}.png"
-        
-        logger.set_info(
-            metric,
-            f"[{ENV_NAMES[env_key]}] SA2C {metric}",
-            file_path,
-        )
+        logger.set_interval(hyperparams.rollout_len)
+        for metric in metrics:
+            file_path = f"{folder_path}/{env_key}_{metric}.png"
+            
+            logger.set_info(
+                metric,
+                f"[{ENV_NAMES[env_key]}] SA2C {metric}",
+                file_path,
+            )
 
     # Run the training loop
     num_batches = int(hyperparams.num_updates / hyperparams.batch_count)
@@ -345,12 +347,13 @@ def train(env_key, seed, logger, verbose = False, metrics=None, vanilla=False):
         actor_state, critic_state, batch_metrics, rng_key = \
             run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla)
         norms = batch_metrics[1]
-        logger.log_metrics({
-            "reward": batch_metrics[0],
-            "grad_theta_J_norms": norms[0],
-            "hypergradient_norms": norms[1], 
-            "final_product_norms": norms[2],
-            "critic_loss": batch_metrics[2],
-        })
+        if(save_charts):
+            logger.log_metrics({
+                "reward": batch_metrics[0],
+                "grad_theta_J_norms": norms[0],
+                "hypergradient_norms": norms[1], 
+                "final_product_norms": norms[2],
+                "critic_loss": batch_metrics[2],
+            })
         if verbose:
             print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {batch_metrics[0][-1]}, Hypergradient Norm {jnp.mean(batch_metrics[1][1])}, finalProduct Norm{jnp.mean(batch_metrics[1][2])}")
