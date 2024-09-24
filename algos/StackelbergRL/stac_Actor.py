@@ -185,10 +185,11 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
         errors = jnp.square(targets - values)
         # errors = targets-values
         # return jnp.mean(jnp.dot(log_probs, errors))
-        return jnp.mean(log_probs*errors)
+        return 2 * jnp.mean(log_probs * advantages) * (targets[0] - values[0])
     
     # Single Gradients
-    grad_theta_J = grad(advantage_loss, 0)(actor_state.params, transitions, advantages)
+    vgj = jax.value_and_grad(advantage_loss)
+    actor_loss, grad_theta_J = vgj(actor_state.params, transitions, advantages)
     grad_w_J = grad(target_loss, 0)(critic_state.params, transitions, targets, critic_state)
 
     def hvp(v):
@@ -220,17 +221,16 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
     )
     
     # Clipping
-    final_product = clip_grad_norm(final_product, 0.2*optax.global_norm(grad_theta_J))
+
+    # final_product = clip_grad_norm(final_product, 0.2*optax.global_norm(grad_theta_J))
     hypergradient = jax.tree_util.tree_map(lambda x, y: x - y, grad_theta_J, final_product)
     hypergradient = jax.lax.cond(vanilla, lambda: grad_theta_J, lambda: hypergradient)
     actor_state = actor_state.apply_gradients(grads=hypergradient)
     
     #print all norms
     hypergradient_norms = optax.global_norm(hypergradient)
-    final_product_norms = optax.global_norm(final_product)
-    grad_theta_J_norms = optax.global_norm(grad_theta_J)
 
-    return (actor_state, (grad_theta_J_norms, hypergradient_norms, final_product_norms))
+    return (actor_state, hypergradient_norms, actor_loss)
 
 def clip_grad_norm(grad, max_norm):
     norm = optax.global_norm(grad)
@@ -265,14 +265,14 @@ def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams,
     transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
     advantages, targets = calc_values(critic_state, transitions, last_observation, hyperparams.discount_rate)
 
-    actor_state, norms = update_leaderactor(actor_state, critic_state, transitions, advantages, targets, vanilla)
+    actor_state, hypergradient_norm, actor_loss = update_leaderactor(actor_state, critic_state, transitions, advantages, targets, vanilla)
     critic_loss = 0
     for c in range(hyperparams.critic_updates):
         critic_state, critic_loss = update_critic(critic_state, transitions, targets)
 
     total_rewards = calc_episode_rewards(transitions)
     average_reward = jnp.sum(total_rewards * transitions.done) / jnp.sum(transitions.done)
-    return (actor_state, critic_state, (average_reward, norms, critic_loss), rng_key)
+    return (actor_state, critic_state, (average_reward, hypergradient_norm, actor_loss, critic_loss), rng_key)
 
 @functools.partial(jax.jit, static_argnums=0)
 def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla=False):
@@ -346,14 +346,12 @@ def train(env_key, seed, logger, verbose = False, metrics=None, vanilla=False, s
     for b in range(num_batches):
         actor_state, critic_state, batch_metrics, rng_key = \
             run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla)
-        norms = batch_metrics[1]
         if(save_charts):
             logger.log_metrics({
                 "reward": batch_metrics[0],
-                "grad_theta_J_norms": norms[0],
-                "hypergradient_norms": norms[1], 
-                "final_product_norms": norms[2],
-                "critic_loss": batch_metrics[2],
+                "hypergradient_norms": batch_metrics[1], 
+                "actor_loss": batch_metrics[2],
+                "critic_loss": batch_metrics[3],
             })
         if verbose:
             print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {batch_metrics[0][-1]}, Hypergradient Norm {jnp.mean(batch_metrics[1][1])}, finalProduct Norm{jnp.mean(batch_metrics[1][2])}")

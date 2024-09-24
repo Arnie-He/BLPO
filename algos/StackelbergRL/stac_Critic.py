@@ -1,3 +1,4 @@
+import jax.flatten_util
 from environments import ENV_NAMES
 from models.critic import Critic, PixelCritic
 from models.discrete_actor import DiscreteActor, DiscretePixelActor
@@ -22,7 +23,7 @@ class Hyperparams:
     discount_rate: float = flax.struct.field(pytree_node=False)
     actor_learning_rate: float = flax.struct.field(pytree_node=False)
     critic_learning_rate: float = flax.struct.field(pytree_node=False)
-    critic_updates: int = flax.struct.field(pytree_node=False)
+    actor_updates: int = flax.struct.field(pytree_node=False)
     adam_eps: float = flax.struct.field(pytree_node=False)
 
 ENV_CONFIG = {
@@ -38,7 +39,7 @@ ENV_CONFIG = {
             discount_rate=0.99,
             actor_learning_rate=0.0025,
             critic_learning_rate=0.004,
-            critic_updates=25,
+            actor_updates=25,
             adam_eps=1e-5,
         ),
     },
@@ -54,7 +55,7 @@ ENV_CONFIG = {
             discount_rate=0.99,
             actor_learning_rate=0.0025,
             critic_learning_rate=0.004,
-            critic_updates=25,
+            actor_updates=25,
             adam_eps=1e-5,
         ),
     },
@@ -91,7 +92,7 @@ ENV_CONFIG = {
             discount_rate=0.995,
             actor_learning_rate=0.0015,
             critic_learning_rate=0.003,
-            critic_updates=20,
+            actor_updates=20,
             adam_eps=1e-5,
         ),
     },
@@ -159,32 +160,82 @@ def calc_values(critic_state, transitions, last_observation, discount_rate):
 
     return (advantages, targets)
 
-def update_actor(actor_state, transitions, advantages):
-    """Calculates and applies the advantage gradient estimator at each time step."""
-    def advantage_loss(params, transitions, advantages):
-        """Calculates the advantage estimator on a batch of transitions."""
-        action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
-        log_probs = action_dists.log_prob(transitions.action)
-        return -jnp.mean(advantages * log_probs)
+def stackelberg_update(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla=False):
+    rng_key, rollout_key = jax.random.split(rng_key, 2)
+    transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
 
-    advantage_grad = jax.value_and_grad(advantage_loss)
-    loss, grads = advantage_grad(actor_state.params, transitions, advantages)
-
-    actor_state = actor_state.apply_gradients(grads=grads)
-    return (actor_state, loss)
-
-def update_critic(critic_state, transitions, targets):
-    """Calculates and applies the value target gradient at each time step."""
-    def target_loss(params, transitions, targets, critic_state):
-        """Calculates the mean squared error on a batch of transitions."""
-        values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
+    # define L function(critic's total objective)
+    def L_loss(critic_params):
+        _, targets = calc_values(critic_state, transitions, last_observation, hyperparams.discount_rate)
+        values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
         errors = jnp.square(targets - values)
         return jnp.mean(errors)
     
-    target_grad = jax.value_and_grad(target_loss)
-    loss, grads = target_grad(critic_state.params, transitions, targets, critic_state)
-    critic_state = critic_state.apply_gradients(grads=grads)
-    return (critic_state, loss)
+    # define the L function for computing grad_theta_L
+    def L_surrogate(actor_params, critic_params):
+        advantages, targets = calc_values(critic_state, transitions, last_observation, hyperparams.discount_rate)
+        action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(actor_params, transitions.observation)
+        log_probs = action_dists.log_prob(transitions.action)
+        values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
+        return 2 * jnp.mean(log_probs * advantages) * (targets[0] - values[0])
+    
+    # define J function(actor's total objective)
+    def J_loss(actor_params, critic_params):
+        advantages, _ = calc_values(critic_state, transitions, last_observation, hyperparams.discount_rate)
+        action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(actor_params, transitions.observation)
+        log_probs = action_dists.log_prob(transitions.action)
+        return -jnp.mean(advantages * log_probs)
+    
+    # update critic first, then update actor multiple times till (almost) convergence
+    target_grad = jax.value_and_grad(L_loss)
+    critic_loss, grad_w_L = target_grad(critic_state.params)
+    grad_theta_L = jax.grad(L_surrogate, argnums=0)(actor_state.params, critic_state.params)
+
+    def hvp(v):
+        actor_params_flat, unravel_fn = jax.flatten_util.ravel_pytree(actor_state.params)
+        def loss_grad_flat(p):
+            return jax.flatten_util.ravel_pytree(
+                jax.grad(J_loss, argnums=0)(unravel_fn(p), critic_state.params)
+            )
+        lambda_reg=0.0
+        hvp = jax.jvp(loss_grad_flat, (actor_params_flat,), (v,))[1] + lambda_reg * v
+        return hvp
+    
+    grad_theta_L_flat, unflatten_fn = jax.flatten_util.ravel_pytree(grad_theta_L)
+    def cg_solve(v):
+        return jax.scipy.sparse.linalg.cg(hvp, v, maxiter=10, tol=1e-10)[0]
+    inverse_hvp_flat = cg_solve(grad_theta_L_flat)
+    inverse_hvp = unflatten_fn(inverse_hvp_flat)    
+
+    # 6. Compute mixed gradient and its transpose: [∇²_θ,ν V_s(ν, θ*(ν))]^T
+    def mixed_grad_fn(policy_params, critic_params):
+        return jax.grad(J_loss)(policy_params, critic_params)
+
+    # 7. Compute the final product: [∇²_θ,ν V_s(ν, θ*(ν))]^T * [∇²_θ V_s(ν, θ*(ν))]^(-1) * ∇_θ L_pref(ν)
+    # We use JVP to compute this product efficiently
+    _, final_product = jax.jvp(
+        lambda p: mixed_grad_fn(actor_state.params, p),
+        (critic_state.params,),
+        (inverse_hvp,)
+    )
+
+    # Compute hypergraident and update critic
+    hypergradient = jax.tree_util.tree_map(lambda x, y: x - y, grad_w_L, final_product)
+    hypergradient = jax.lax.cond(vanilla, lambda: grad_w_L, lambda: hypergradient)
+    critic_state = critic_state.apply_gradients(grads = hypergradient)
+
+    # log hypergradient norms
+    hypergradient_norm = optax.global_norm(hypergradient)
+
+    # update the actor for actor_updates times
+    for c in range(hyperparams.actor_updates):
+        actor_advantage_grad = jax.value_and_grad(J_loss)
+        actor_loss, actor_grads = actor_advantage_grad(actor_state.params, critic_state.params)
+        actor_state = actor_state.apply_gradients(grads=actor_grads)
+
+    total_rewards = calc_episode_rewards(transitions)
+    average_reward = jnp.sum(total_rewards * transitions.done) / jnp.sum(transitions.done)
+    return (actor_state, critic_state, (average_reward, hypergradient_norm, actor_loss, critic_loss), rng_key)
 
 def calc_episode_rewards(transitions):
     """Calculates the total real reward for each episode."""
@@ -201,29 +252,14 @@ def calc_episode_rewards(transitions):
     )
     return rewards
 
-def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams):
-    """Runs an iteration of the training loop with the vanilla parallel update."""
-    rng_key, rollout_key = jax.random.split(rng_key, 2)
-    transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
-    advantages, targets = calc_values(critic_state, transitions, last_observation, hyperparams.discount_rate)
-
-    actor_state, actor_loss = update_actor(actor_state, transitions, advantages)
-    critic_loss = 0
-    for c in range(hyperparams.critic_updates):
-        critic_state, critic_loss = update_critic(critic_state, transitions, targets)
-
-    total_rewards = calc_episode_rewards(transitions)
-    average_reward = jnp.sum(total_rewards * transitions.done) / jnp.sum(transitions.done)
-    return (actor_state, critic_state, (average_reward, actor_loss, critic_loss), rng_key)
-
 @functools.partial(jax.jit, static_argnums=0)
-def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams):
+def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla=False):
     """Trains the model for a batch of updates."""
     def run_once(batch_state, x):
         """Runs an update and carries over the train state."""
         actor_state, critic_state, rng_key = batch_state
         actor_state, critic_state, metrics, rng_key = \
-            run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
+            stackelberg_update(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla)
         return ((actor_state, critic_state, rng_key), metrics)
 
     batch_state, batch_metrics = jax.lax.scan(
@@ -234,7 +270,7 @@ def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams):
     actor_state, critic_state, rng_key = batch_state
     return (actor_state, critic_state, batch_metrics, rng_key)
 
-def train(env_key, seed, logger, verbose = False):
+def train(env_key, seed, logger, verbose = False, metrics=None, vanilla=False, save_charts=False, description=None):
     # Create environment
     config = ENV_CONFIG[env_key]
     hyperparams = config["hyperparams"]
@@ -265,32 +301,36 @@ def train(env_key, seed, logger, verbose = False):
     )
 
     # Set logger info
-    logger.set_interval(hyperparams.rollout_len)
-    logger.set_info(
-        "reward",
-        f"[{ENV_NAMES[env_key]}] Actor-Critic average reward",
-        f"charts/actor_critic/{env_key}_reward.png",
-    )
-    logger.set_info(
-        "actor_loss",
-        f"[{ENV_NAMES[env_key]}] Actor loss",
-        f"charts/actor_critic/{env_key}_actor_loss.png",
-    )
-    logger.set_info(
-        "critic_loss",
-        f"[{ENV_NAMES[env_key]}] Critic loss",
-        f"charts/actor_critic/{env_key}_critic_loss.png",
-    )
+    if(save_charts):
+        from datetime import datetime
+        import os
+        current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        if(description==None): 
+            description=current_datetime
+        folder_path = f"charts/stackelberg_Actor/{description}"
+        os.makedirs(folder_path, exist_ok=True)
 
-    # Run the training loop
+        logger.set_interval(hyperparams.rollout_len)
+        for metric in metrics:
+            file_path = f"{folder_path}/{env_key}_{metric}.png"
+            
+            logger.set_info(
+                metric,
+                f"[{ENV_NAMES[env_key]}] SA2C {metric}",
+                file_path,
+            )
+
+     # Run the training loop
     num_batches = int(hyperparams.num_updates / hyperparams.batch_count)
     for b in range(num_batches):
         actor_state, critic_state, batch_metrics, rng_key = \
-            run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams)
-        logger.log_metrics({
-            "reward": batch_metrics[0],
-            "actor_loss": batch_metrics[1],
-            "critic_loss": batch_metrics[2],
-        })
+            run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla)
+        if(save_charts):
+            logger.log_metrics({
+                "reward": batch_metrics[0],
+                "hypergradient_norms": batch_metrics[1],
+                "actor_loss": batch_metrics[2],
+                "critic_loss": batch_metrics[3],
+            })
         if verbose:
-            print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {batch_metrics[0][-1]}")
+            print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {batch_metrics[0][-1]}, Hypergradient Norm {jnp.mean(batch_metrics[1])}")

@@ -6,3 +6,9 @@ Done:
     1- Never had issue with cg on catch (doesn't diverge)
     2- It diverges on cartpole (gradient being nans)
 3. Clipping helped a lot, but still only to a similar performance of normal actor critic's.
+
+
+
+
+9.19 during development
+1. learning rate in hyperparams, where did we get them

@@ -1,4 +1,6 @@
 import matplotlib.pyplot as plt
+import csv
+import os
 
 class ChartLogger:
     """A logger that saves metrics during training and plots them as charts."""
@@ -37,3 +39,24 @@ class ChartLogger:
         axes.plot(step_counts, values)
         axes.set_title(self.titles[name])
         figure.savefig(self.save_paths[name])
+
+    def log_to_csv(self, csv_path):
+        """Logs all metrics to a CSV file."""
+        # Check if file exists to add header if necessary
+        write_header = not os.path.exists(csv_path)
+
+        with open(csv_path, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            
+            if write_header:
+                # Write the header (metric names)
+                header = ['step'] + list(self.data.keys())
+                writer.writerow(header)
+
+            # Log data row by row
+            max_length = max(len(values) for values in self.data.values())
+            for i in range(max_length):
+                row = [i * self.interval + 1]  # Step number
+                for name in self.data:
+                    row.append(self.data[name][i] if i < len(self.data[name]) else '')
+                writer.writerow(row)

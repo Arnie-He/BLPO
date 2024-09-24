@@ -1,7 +1,7 @@
 import argparse
 import jax
 from algos import discrete_actor_critic, discrete_ppo, discrete_reinforce
-from algos.StackelbergRL import stac_Actor
+from algos.StackelbergRL import stac_Actor, stac_Critic
 from loggers.chart_logger import ChartLogger
 
 def run_on_cpu():
@@ -11,7 +11,8 @@ algos = {
     "actor_critic": discrete_actor_critic,
     "ppo": discrete_ppo,
     "reinforce": discrete_reinforce,
-    "Stackelberg-Actor": stac_Actor
+    "stac-actor": stac_Actor,
+    "stac-critic": stac_Critic
 }
 
 def main():
@@ -19,7 +20,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run RL algorithms with optional configurations")
     parser.add_argument("--cpu", default=False, action="store_true", help="Run on CPU")
     parser.add_argument("--task", type=str, default="cartpole", help="Specify the environment/task")
-    parser.add_argument("--algo", type=str, default="Stackelberg-Actor", choices=algos.keys(), help="Specify the algorithm")
+    parser.add_argument("--algo", type=str, default="stac-actor", choices=algos.keys(), help="Specify the algorithm")
     parser.add_argument("--vanilla", type=bool, default=False)
     parser.add_argument("--log", type=bool, default=False)
     parser.add_argument("--name", type=str, default=None)
@@ -32,9 +33,8 @@ def main():
 
     metrics = [
         "reward",
-        "grad_theta_J_norms",
         "hypergradient_norms",
-        "final_product_norms",
+        "actor_loss",
         "critic_loss"
     ]
     # logger = ChartLogger(( "reward", "grad_theta_J_norms", "hypergradient_norms",
@@ -44,13 +44,12 @@ def main():
     algo = algos[args.algo]
     algo.train(args.task, 0, logger, verbose=True, metrics=metrics, vanilla=args.vanilla, save_charts=args.log, description=args.name)
 
+    logger.log_to_csv(f'data/{args.algo}_{args.task}_{args.vanilla}')
+
     # Plot metrics
     if(args.log):
-        logger.plot_metric("reward")
-        logger.plot_metric("grad_theta_J_norms")
-        logger.plot_metric("hypergradient_norms")
-        logger.plot_metric("final_product_norms")
-        logger.plot_metric("critic_loss")
+        for m in metrics:
+            logger.plot_metric(m)
 
 if __name__ == "__main__":
     main()
