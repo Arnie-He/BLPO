@@ -1,7 +1,7 @@
 import argparse
 import jax
 from algos import discrete_actor_critic, discrete_ppo, discrete_reinforce
-from algos.StackelbergRL import stac_Actor, stac_Critic
+from algos.StackelbergRL import stac_Actor, stac_Critic, stac_critic
 from loggers.chart_logger import ChartLogger
 
 def run_on_cpu():
@@ -12,7 +12,7 @@ algos = {
     "ppo": discrete_ppo,
     "reinforce": discrete_reinforce,
     "stac-actor": stac_Actor,
-    "stac-critic": stac_Critic
+    "stac-critic": stac_critic
 }
 
 def main():
