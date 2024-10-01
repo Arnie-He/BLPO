@@ -166,7 +166,7 @@ def calc_values(critic_state, critic_params, transitions, last_observation, disc
 
 
 
-def update_leadercritic(actor_state, critic_state, critic_prime_state, transitions, advantages, targets, advantages_prime, targets_prime, last_observation, hyperparams, vanilla=False, lambda_):
+def update_followercritic(actor_state, critic_state, critic_prime_state, transitions, advantages, targets, advantages_prime, targets_prime, last_observation, hyperparams, vanilla=False, lambda_):
 
     def F_loss(critic_params, critic_state, transitions, targets):
         values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
@@ -187,7 +187,6 @@ def update_leadercritic(actor_state, critic_state, critic_prime_state, transitio
         values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
         return 2 * jnp.mean(log_probs * advantages) * (targets[0] - values[0])
     
-
     def Lagrangian(actor_params, critic_params,critic_prime_params, lambda_ actor_state, critic_state, , critic_prime_state, transitions, advantages, targets, advantages_prime, targets_prime):
         F = F_loss(critic_params, critic_state, transitions, targets)
         g = g_loss(actor_params, critic_params, actor_state, critic_state, transitions, advantages, targets)
