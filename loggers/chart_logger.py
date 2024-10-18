@@ -41,17 +41,14 @@ class ChartLogger:
         figure.savefig(self.save_paths[name])
 
     def log_to_csv(self, csv_path):
-        """Logs all metrics to a CSV file."""
-        # Check if file exists to add header if necessary
-        write_header = not os.path.exists(csv_path)
-
-        with open(csv_path, mode='a', newline='') as file:
+        """Logs all metrics to a CSV file, replacing the old file."""
+        # Open the file in write mode to overwrite the old file
+        with open(csv_path, mode='w', newline='') as file:
             writer = csv.writer(file)
-            
-            if write_header:
-                # Write the header (metric names)
-                header = ['step'] + list(self.data.keys())
-                writer.writerow(header)
+
+            # Write the header (metric names)
+            header = ['step'] + list(self.data.keys())
+            writer.writerow(header)
 
             # Log data row by row
             max_length = max(len(values) for values in self.data.values())
