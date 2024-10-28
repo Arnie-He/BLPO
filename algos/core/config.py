@@ -18,9 +18,12 @@ ALGO_CONFIG = {
         "description": "lambda10e5",
     },
     "stac-critic": {
-        
+        "description": "nolambda",
     },
     "unrolling": {
         
+    },
+    "penalty": {
+        "description": "lambda_fixed",
     },
 }

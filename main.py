@@ -2,7 +2,7 @@ import argparse
 import jax
 from algos.baselines import discrete_actor_critic, discrete_ppo, discrete_reinforce, actor_critic_NoNesting
 from algos.StackelbergRL import stac_Actor, stac_Critic, stac_critic, stac_Actor_newGrad
-from bilevel_actor_critic import unrolling_actor_redo
+from bilevel_actor_critic import unrolling_actor_redo, lambda_regret
 from loggers.chart_logger import ChartLogger
 from algos.core.config import ALGO_CONFIG
 import os
@@ -19,6 +19,7 @@ algos = {
     "stac-actor": stac_Actor_newGrad,
     "stac-critic": stac_critic,
     "unrolling": unrolling_actor_redo,
+    "penalty": lambda_regret,
 }
 
 def main():
