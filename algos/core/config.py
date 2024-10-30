@@ -12,10 +12,10 @@ ALGO_CONFIG = {
         
     },
     "ratliff": {
-        "description": "lambda10e5",
+        "description": "lambda0",
     },
     "stac-actor": {
-        "description": "lambda10e5",
+        "description": "lambda0",
     },
     "stac-critic": {
         "description": "nolambda",

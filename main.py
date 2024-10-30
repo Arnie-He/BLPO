@@ -1,11 +1,13 @@
 import argparse
 import jax
+import os
+
+from algos.StackelbergRL import ratliff, stac_critic, stac_Actor_newGrad, stac_Critic
 from algos.baselines import discrete_actor_critic, discrete_ppo, discrete_reinforce, actor_critic_NoNesting
-from algos.StackelbergRL import stac_Actor, stac_Critic, stac_critic, stac_Actor_newGrad
 from bilevel_actor_critic import unrolling_actor_redo, lambda_regret
+
 from loggers.chart_logger import ChartLogger
 from algos.core.config import ALGO_CONFIG
-import os
 
 def run_on_cpu():
     jax.config.update("jax_platform_name", "cpu")
@@ -15,7 +17,7 @@ algos = {
     "actor_critic": discrete_actor_critic,
     "ppo": discrete_ppo,
     "reinforce": discrete_reinforce,
-    "ratliff": stac_Actor,
+    "ratliff": ratliff,
     "stac-actor": stac_Actor_newGrad,
     "stac-critic": stac_critic,
     "unrolling": unrolling_actor_redo,
@@ -29,6 +31,8 @@ def main():
     parser.add_argument("--task", type=str, default="cartpole", help="Specify the environment/task")
     parser.add_argument("--algo", type=str, default="stac-actor", choices=algos.keys(), help="Specify the algorithm")
     parser.add_argument("--plot", type=bool, default=False)
+    parser.add_argument("--description", type=str, default="", help="describe the variation of algorithm running")
+    parser.add_argument("--lam", type=float, default=0.0, help="lambda_reg")
 
     args = parser.parse_args()
 
@@ -36,16 +40,34 @@ def main():
     if args.cpu:
         run_on_cpu()
 
+    vanilla=True
+    if(args.algo == "stac-actor" or args.algo == "ratliff"):
+        vanilla=False
+    
+
     # Define the metrics to log for 
-    metrics = [
-        "reward",
-        "actor_loss",
-        "critic_loss"
-    ]
+    if not(vanilla):
+        metrics = [
+            "reward",
+            "actor_loss",
+            "critic_loss",
+            "hypergradient",
+            "final_product",
+            "cosine_similarities"
+        ] 
+    else:
+        metrics = [
+            "reward",
+            "actor_loss",
+            "critic_loss"
+        ] 
     logger = ChartLogger(metrics)
 
     config = ALGO_CONFIG[args.algo]
     description = config["description"]
+
+    if not(args.description==""):
+         description = args.description
 
     folder_path = f"charts/{args.algo}/{args.task}_{description}"
     for metric in metrics:
@@ -58,9 +80,13 @@ def main():
             )
 
     algo = algos[args.algo]
-    algo.train(args.task, 0, logger, verbose=True)
     # Ensure the data directory for the task exists
     os.makedirs(f'data/{args.task}', exist_ok=True)
+    if not(vanilla):
+        # print("yes!")
+        algo.train(args.task, 0, logger, verbose=True, lam=args.lam)
+    else:
+        algo.train(args.task, 0, logger, verbose=True)
     logger.log_to_csv(f'data/{args.task}/{args.algo}_{description}.csv')
 
     # Plot metrics

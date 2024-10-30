@@ -17,6 +17,10 @@ from algos.core.hyperparams import Hyperparams
 from algos.core.env_config import ENV_CONFIG
 from algos.core.config import ALGO_CONFIG
 
+actor_lr = 0.0025
+critic_lr = 0.008
+nested_updates = 10
+
 @flax.struct.dataclass
 class Transition:
     """A data class that stores a state transition."""
@@ -130,7 +134,7 @@ def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
     actor_state, actor_loss = update_actor(actor_state, transitions, advantages)
     critic_loss = 0
 
-    for c in range(hyperparams.nested_updates):
+    for c in range(nested_updates):
         critic_state, critic_loss = update_critic(critic_state, transitions, targets)
 
     total_rewards = calc_episode_rewards(transitions)
@@ -159,6 +163,7 @@ def train(env_key, seed, logger, verbose):
     # Create environment
     config = ENV_CONFIG[env_key]
     hyperparams = config["hyperparams"]
+
     rng_key, actor_key, critic_key = jax.random.split(jax.random.key(seed), 3)
     env, env_params = gymnax.make(ENV_NAMES[env_key])
     empty_observation = jnp.empty(env.observation_space(env_params).shape)
@@ -177,12 +182,12 @@ def train(env_key, seed, logger, verbose):
     actor_state = TrainState.create(
         apply_fn=jax.jit(actor.apply),
         params=actor_params,
-        tx=optax.adam(hyperparams.actor_learning_rate, eps=hyperparams.adam_eps),
+        tx=optax.adam(actor_lr, eps=hyperparams.adam_eps),
     )
     critic_state = TrainState.create(
         apply_fn=jax.jit(critic.apply),
         params=critic_params,
-        tx=optax.adam(hyperparams.critic_learning_rate, eps=hyperparams.adam_eps),
+        tx=optax.adam(critic_lr, eps=hyperparams.adam_eps),
     )
 
     # Set logger info

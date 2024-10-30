@@ -171,7 +171,7 @@ def J_loss(actor_params, critic_params, actor_state, critic_state, transitions, 
     log_probs = action_dists.log_prob(transitions.action)
     return -jnp.mean(advantages * log_probs)
 
-def update_leadercritic(actor_state, critic_state, transitions, advantages, targets, last_observation, hyperparams, vanilla=False):
+def update_leadercritic(actor_state, critic_state, transitions, advantages, targets, last_observation, hyperparams, vanilla=False, lambda_reg=0.0):
 
     def L_loss(critic_params, critic_state, transitions, targets):
         values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
@@ -195,7 +195,6 @@ def update_leadercritic(actor_state, critic_state, transitions, advantages, targ
             return jax.flatten_util.ravel_pytree(
                 jax.grad(J_loss, argnums=0)(unravel_fn(p), critic_state.params, actor_state, critic_state, transitions, last_observation, hyperparams)
             )[0]
-        lambda_reg=0.0
         hvp = jax.jvp(loss_grad_flat, (actor_params_flat,), (v,))[1] + lambda_reg * v
         return hvp
     
@@ -250,13 +249,13 @@ def calc_episode_rewards(transitions):
     )
     return rewards
 
-def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla=False):
+def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla=False, lam=0.0):
     """Runs an iteration of the training loop with the vanilla parallel update."""
     rng_key, rollout_key = jax.random.split(rng_key, 2)
     transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
     advantages, targets = calc_values(critic_state, critic_state.params, transitions, last_observation, hyperparams.discount_rate)
 
-    critic_state, hypergradient_norm, critic_loss = update_leadercritic(actor_state, critic_state, transitions, advantages, targets, last_observation, hyperparams, vanilla)
+    critic_state, hypergradient_norm, critic_loss = update_leadercritic(actor_state, critic_state, transitions, advantages, targets, last_observation, hyperparams, vanilla, lam)
     actor_loss = 0
     for c in range(hyperparams.critic_updates):
         actor_state, actor_loss = update_actor(actor_state, critic_state, transitions, targets, last_observation, hyperparams)
@@ -266,13 +265,13 @@ def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams,
     return (actor_state, critic_state, (average_reward, hypergradient_norm, actor_loss, critic_loss), rng_key)
 
 @functools.partial(jax.jit, static_argnums=0)
-def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla=False):
+def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla=False, lam=0.0):
     """Trains the model for a batch of updates."""
     def run_once(batch_state, x):
         """Runs an update and carries over the train state."""
         actor_state, critic_state, rng_key = batch_state
         actor_state, critic_state, metrics, rng_key = \
-            run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla)
+            run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla, lam=lam)
         return ((actor_state, critic_state, rng_key), metrics)
 
     batch_state, batch_metrics = jax.lax.scan(
@@ -283,7 +282,7 @@ def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, 
     actor_state, critic_state, rng_key = batch_state
     return (actor_state, critic_state, batch_metrics, rng_key)
 
-def train(env_key, seed, logger, verbose = False, metrics=None, vanilla=False, save_charts=False, description=None):
+def train(env_key, seed, logger, verbose = False, metrics=None, vanilla=False, save_charts=False, description=None, lam=0.0):
     # Create environment
     config = ENV_CONFIG[env_key]
     hyperparams = config["hyperparams"]
@@ -313,36 +312,19 @@ def train(env_key, seed, logger, verbose = False, metrics=None, vanilla=False, s
         tx=optax.adam(hyperparams.critic_learning_rate, eps=hyperparams.adam_eps),
     )
 
-    if(save_charts):
-        from datetime import datetime
-        import os
-        current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        if(description==None): 
-            description=current_datetime
-        folder_path = f"charts/stackelberg_Actor/{description}"
-        os.makedirs(folder_path, exist_ok=True)
-
-        logger.set_interval(hyperparams.rollout_len)
-        for metric in metrics:
-            file_path = f"{folder_path}/{env_key}_{metric}.png"
-            
-            logger.set_info(
-                metric,
-                f"[{ENV_NAMES[env_key]}] SA2C {metric}",
-                file_path,
-            )
+    
+    logger.set_interval(hyperparams.rollout_len)
 
     # Run the training loop
     num_batches = int(hyperparams.num_updates / hyperparams.batch_count)
     for b in range(num_batches):
         actor_state, critic_state, batch_metrics, rng_key = \
-            run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla)
-        if(save_charts):
-            logger.log_metrics({
-                "reward": batch_metrics[0],
-                "hypergradient_norms": batch_metrics[1], 
-                "actor_loss": batch_metrics[2],
-                "critic_loss": batch_metrics[3],
-            })
+            run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla, lam=lam)
+        
+        logger.log_metrics({
+            "reward": batch_metrics[0],
+            "actor_loss": batch_metrics[2],
+            "critic_loss": batch_metrics[3],})
+        
         if verbose:
             print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {batch_metrics[0][-1]}, Hypergradient Norm {jnp.mean(batch_metrics[1][1])}, finalProduct Norm{jnp.mean(batch_metrics[1][2])}")
