@@ -10,16 +10,17 @@ from flax.training.train_state import TrainState
 import functools
 import gymnax
 import jax
+from jax import grad, jacfwd, jacrev
 import jax.numpy as jnp
 import optax
+from jax import flatten_util
+from jax.scipy.sparse.linalg import cg
+import json
 
 from algos.core.hyperparams import Hyperparams
 from algos.core.env_config import ENV_CONFIG
 from algos.core.config import ALGO_CONFIG
-
-actor_lr = 0.0025
-critic_lr = 0.008
-nested_updates = 10
+from algos.StackelbergRL.understanding_gradients import cosine_similarity, project_B_onto_A
 
 @flax.struct.dataclass
 class Transition:
@@ -61,10 +62,11 @@ def run_rollout(env, env_params, length, actor_state, rng_key):
     a, n, last_observation, r = rollout_state
     return (transitions, last_observation)
 
-# def calc_values(critic_state, transitions, last_observation, discount_rate):
+# @jax.jit
+# def calc_values(critic_state, critic_params, transitions, last_observation, discount_rate):
 #     """Calculates the advantage estimate at each time step."""
-#     values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_state.params, transitions.observation)
-#     last_value = critic_state.apply_fn(critic_state.params, last_observation)
+#     values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
+#     last_value = critic_state.apply_fn(critic_params, last_observation)
 
 #     def calc_advantage(next_value, value_info):
 #         value, reward, done = value_info
@@ -107,28 +109,107 @@ def calc_values(critic_state, critic_params, transitions, last_observation, disc
 
     return (advantages, targets)
 
-def update_actor(actor_state, transitions, advantages):
-    """Calculates and applies the advantage gradient estimator at each time step."""
+# follower-objective
+def target_loss(params, transitions, targets, critic_state):
+    """Calculates the mean squared error on a batch of transitions."""
+    values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
+    errors = jnp.square(targets - values)
+    return jnp.mean(errors)
+
+def update_leaderactor(actor_state, critic_state, transitions, advantages, targets, last_observation, hyperparams, vanilla=False):
+    # Define the loss functions
     def advantage_loss(params, transitions, advantages):
-        """Calculates the advantage estimator on a batch of transitions."""
         action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
         log_probs = action_dists.log_prob(transitions.action)
-        return -jnp.mean(advantages * log_probs)
 
-    advantage_grad = jax.value_and_grad(advantage_loss)
-    loss, grads = advantage_grad(actor_state.params, transitions, advantages)
+        return -jnp.mean(advantages * log_probs) 
 
-    actor_state = actor_state.apply_gradients(grads=grads)
-    return (actor_state, loss)
+    def leader_f2_loss(actor_params, critic_params):
+        action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(actor_params, transitions.observation)
+        log_probs = action_dists.log_prob(transitions.action)
+        advantages, _ = calc_values(critic_state, critic_params, transitions, last_observation, hyperparams.discount_rate)
+        result = advantages[:-1] * (hyperparams.discount_rate * advantages[1:] * log_probs[1:] - advantages[:-1] * log_probs[:-1])
+
+        result = 2 * jnp.mean(result) 
+        # result = clip_grad_norm(result, optax.global_norm(grad_theta_J))
+
+        return result 
+    
+    # Single Gradients
+    vgj = jax.value_and_grad(advantage_loss)
+    actor_loss, grad_theta_J = vgj(actor_state.params, transitions, advantages)
+    
+    grad_w_J = grad(target_loss, 0)(critic_state.params, transitions, targets, critic_state)
+
+    grad_w_J_flat, unflatten_fn = jax.flatten_util.ravel_pytree(critic_state.params)
+    def nystrom_hvp(rank, rho, lambda_reg=0):
+        # Step 1: Compute the gradients of the outer objective with respect to the inner and outer params
+        out_out_g = jax.grad(advantage_loss, argnums=0)(actor_state.params, transitions, advantages)
+        out_in_g = jax.grad(leader_f2_loss, argnums=1)(actor_state.params, critic_state.params)
+        
+        # Step 2: Select random rows for low-rank approximation
+        param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
+        indices = jax.random.permutation(jax.random.PRNGKey(0), param_size)[:rank]
+
+        # Helper function to select Hessian rows using the inner objective
+        def select_grad_row(in_params, indices):
+            grad = jax.grad(lambda params: target_loss(params, transitions, targets, critic_state))(in_params)
+            grad_flat, _ = jax.flatten_util.ravel_pytree(grad)
+            return grad_flat[indices]
+
+        # Step 3: Approximate Hessian rows using the selected indices
+        hessian_rows = jax.jacrev(select_grad_row)(critic_state.params, indices)
+
+        # Flattening the hessian rows pytree into a single vector for concatenation
+        hessian_rows_flat, _ = jax.flatten_util.ravel_pytree(hessian_rows)
+
+        # Step 4: Concatenate the rows to form matrix C
+        C = jnp.reshape(hessian_rows_flat, (rank, -1))
+
+        # Step 5: Apply the Woodbury matrix identity to compute the inverse Hessian-vector product
+        M = C.take(indices, axis=1)
+        v_flat, _ = jax.flatten_util.ravel_pytree(out_in_g)
+        
+        # Compute the inverse Hessian-vector product using Woodbury identity
+        x = (1 / (rho )) * v_flat - (1 / ((rho ) ** 2)) * C.T @ jax.scipy.linalg.solve(M + (1 / rho) * C @ C.T +  jnp.eye(M.shape[0]), C @ v_flat)
+
+        # Step 6: Ensure the result is a flat vector that can be unraveled
+        return x 
+    
+    inverse_hvp_flat = nystrom_hvp(hyperparams.nystrom_rank, hyperparams.nystrom_rho)
+    inverse_hvp = unflatten_fn(inverse_hvp_flat)
+
+    # 6. Compute mixed gradient and its transpose: [∇²_θ,ν V_s(ν, θ*(ν))]^T
+    def mixed_grad_fn(policy_params, critic_params):
+        return jax.grad(leader_f2_loss)(policy_params, critic_params)
+
+    # 7. Compute the final product: [∇²_θ,ν V_s(ν, θ*(ν))]^T * [∇²_θ V_s(ν, θ*(ν))]^(-1) * ∇_θ L_pref(ν)
+    # We use JVP to compute this product efficiently
+    _, final_product = jax.jvp(
+        lambda p: mixed_grad_fn(actor_state.params, p),
+        (critic_state.params,),
+        (inverse_hvp,)
+    )
+    
+    # projection 
+    # final_product = project_B_onto_A(grad_theta_J, final_product)
+
+    # vanilla = True
+    # final_product = clip_grad_norm(final_product, 0.2*optax.global_norm(grad_theta_J))
+    hypergradient = jax.tree_util.tree_map(lambda x, y: x -y, grad_theta_J, final_product)
+    hypergradient = jax.lax.cond(vanilla, lambda: grad_theta_J, lambda: hypergradient)
+    actor_state = actor_state.apply_gradients(grads=hypergradient)
+    
+    #print all norms
+    hypergradient_norms = optax.global_norm(hypergradient)
+    final_product_norms = optax.global_norm(final_product)
+
+    co_sim = cosine_similarity(final_product, grad_theta_J)
+
+    return (actor_state, (hypergradient_norms, final_product_norms, co_sim), actor_loss)
 
 def update_critic(critic_state, transitions, targets):
     """Calculates and applies the value target gradient at each time step."""
-    def target_loss(params, transitions, targets, critic_state):
-        """Calculates the mean squared error on a batch of transitions."""
-        values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
-        errors = jnp.square(targets - values)
-        return jnp.mean(errors)
-    
     target_grad = jax.value_and_grad(target_loss)
     loss, grads = target_grad(critic_state.params, transitions, targets, critic_state)
     critic_state = critic_state.apply_gradients(grads=grads)
@@ -149,30 +230,29 @@ def calc_episode_rewards(transitions):
     )
     return rewards
 
-def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams):
+def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla=False):
     """Runs an iteration of the training loop with the vanilla parallel update."""
     rng_key, rollout_key = jax.random.split(rng_key, 2)
     transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
     advantages, targets = calc_values(critic_state, critic_state.params, transitions, last_observation, hyperparams.discount_rate)
 
-    actor_state, actor_loss = update_actor(actor_state, transitions, advantages)
+    actor_state, actor_info, actor_loss = update_leaderactor(actor_state, critic_state, transitions, advantages, targets, last_observation, hyperparams=hyperparams, vanilla=vanilla)
     critic_loss = 0
-
-    for c in range(nested_updates):
+    for c in range(hyperparams.nested_updates):
         critic_state, critic_loss = update_critic(critic_state, transitions, targets)
 
     total_rewards = calc_episode_rewards(transitions)
     average_reward = jnp.sum(total_rewards * transitions.done) / jnp.sum(transitions.done)
-    return (actor_state, critic_state, (average_reward, actor_loss, critic_loss), rng_key)
+    return (actor_state, critic_state, (average_reward, actor_info, actor_loss, critic_loss), rng_key)
 
 @functools.partial(jax.jit, static_argnums=0)
-def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams):
+def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla=False):
     """Trains the model for a batch of updates."""
     def run_once(batch_state, x):
         """Runs an update and carries over the train state."""
         actor_state, critic_state, rng_key = batch_state
         actor_state, critic_state, metrics, rng_key = \
-            run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
+            run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla)
         return ((actor_state, critic_state, rng_key), metrics)
 
     batch_state, batch_metrics = jax.lax.scan(
@@ -183,7 +263,7 @@ def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams):
     actor_state, critic_state, rng_key = batch_state
     return (actor_state, critic_state, batch_metrics, rng_key)
 
-def train(env_key, seed, logger, hyperparams, verbose = False):
+def train(env_key, seed, logger, hyperparams, verbose=True, vanilla=False):
     # Create environment
     config = ENV_CONFIG[env_key]
 
@@ -205,15 +285,15 @@ def train(env_key, seed, logger, hyperparams, verbose = False):
     actor_state = TrainState.create(
         apply_fn=jax.jit(actor.apply),
         params=actor_params,
-        tx=optax.adam(actor_lr, eps=hyperparams.adam_eps),
+        tx=optax.adam(hyperparams.actor_learning_rate, eps=hyperparams.adam_eps),
     )
     critic_state = TrainState.create(
         apply_fn=jax.jit(critic.apply),
         params=critic_params,
-        tx=optax.adam(critic_lr, eps=hyperparams.adam_eps),
+        tx=optax.adam(hyperparams.critic_learning_rate, eps=hyperparams.adam_eps),
     )
 
-    # Set logger info
+
     logger.set_interval(hyperparams.rollout_len)
 
     # Run the training loop
@@ -221,10 +301,14 @@ def train(env_key, seed, logger, hyperparams, verbose = False):
     for b in range(num_batches):
         actor_state, critic_state, batch_metrics, rng_key = \
             run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams)
+        
         logger.log_metrics({
             "reward": batch_metrics[0],
-            "actor_loss": batch_metrics[1],
-            "critic_loss": batch_metrics[2],
+            "actor_loss": batch_metrics[2],
+            "critic_loss": batch_metrics[3],
+            "hypergradient": batch_metrics[1][0],
+            "final_product": batch_metrics[1][1],
+            "cosine_similarities": batch_metrics[1][2]
         })
         if verbose:
-            print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {batch_metrics[0][-1]}")
+            print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {batch_metrics[0][-1]}, Hypergradient Norm {jnp.mean(batch_metrics[1][0])}, finalProduct Norm{jnp.mean(batch_metrics[1][1])}, cosine similarity {batch_metrics[1][2][-1]}")

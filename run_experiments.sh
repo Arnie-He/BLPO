@@ -3,16 +3,26 @@
 # run_experiments.sh
 
 # Define the list of algorithms
-algorithms=("ratliff" "stac-actor" "actor_critic" "a2c_no_nest")
+algorithms=("actor_critic" "stac_actor")
 
 # Define tasks
 tasks=(
-    # "cartpole" 
-    # "pendulum" 
-    # "acrobot"
+    "cartpole"
     "catch"
+    "acrobot"
     # Add other tasks as needed
 )
+
+# Hyperparameters to sweep
+actor_learning_rates=(0.001 0.0025 0.003 0.005)
+critic_learning_rates=(0.005 0.008 0.01)
+nested_updates_list=(10 25 50)
+advantage_rates=(0.9 0.95 0.99)
+nystrom_ranks=(20 50 80 100 150)
+nystrom_rhos=(10 50 80 100)
+
+# Seeds to use
+seeds=(0 1 2 3 4)
 
 # Loop over each task
 for task in "${tasks[@]}"; do
@@ -21,66 +31,40 @@ for task in "${tasks[@]}"; do
     # Run each algorithm for the current task
     for algo in "${algorithms[@]}"; do
         echo "Running algorithm: $algo on task: $task"
-        
-        if [[ "$algo" == "actor_critic" || "$algo" == "a2c_no_nest" ]]; then
-            python main.py --algo="$algo" --task="$task"
-        else
-            for lam in 0.0 10.0 100.0 1000.0 100000.0; do
-                python main.py --algo="$algo" --task="$task" --description="lambda${lam}" --lam="$lam"
+
+        # Loop over hyperparameter combinations
+        for actor_lr in "${actor_learning_rates[@]}"; do
+            for critic_lr in "${critic_learning_rates[@]}"; do
+                for nested_updates in "${nested_updates_list[@]}"; do
+                    for adv_rate in "${advantage_rates[@]}"; do
+                        for nystrom_rank in "${nystrom_ranks[@]}"; do
+                            for nystrom_rho in "${nystrom_rhos[@]}"; do
+                                for seed in "${seeds[@]}"; do
+
+                                    # Construct a unique description for this combination
+                                    description="seed${seed}_actorlr${actor_lr}_criticlr${critic_lr}_nested${nested_updates}_adv${adv_rate}_nystromrank${nystrom_rank}_nystromrho${nystrom_rho}"
+
+                                    # Run the experiment
+                                    python main.py \
+                                        --algo="$algo" \
+                                        --task="$task" \
+                                        --actor_learning_rate="$actor_lr" \
+                                        --critic_learning_rate="$critic_lr" \
+                                        --nested_updates="$nested_updates" \
+                                        --advantage_rate="$adv_rate" \
+                                        --nystrom_rank="$nystrom_rank" \
+                                        --nystrom_rho="$nystrom_rho" \
+                                        --seed="$seed"
+
+                                done
+                            done
+                        done
+                    done
+                done
             done
-        fi
-    done
-
-    # Prepare data file names based on the algorithm and task
-    data_files=()
-    for algo in "${algorithms[@]}"; do
-        if [[ "$algo" == "actor_critic" ]]; then
-            data_files+=("data/${task}/${algo}_nested.csv")
-        elif [[ "$algo" == "a2c_no_nest" ]]; then
-            data_files+=("data/${task}/${algo}_nonest.csv")
-        else
-            for lam in 0.0 10.0 100.0 1000.0 100000.0; do
-                data_files+=("data/${task}/${algo}_lambda${lam}.csv")
-            done
-        fi
-    done
-
-    # Convert the data_files array to a space-separated string
-    data_files_str="${data_files[@]}"
-
-    # Run the plotter and save the plot for rewards
-    output_file="data/${task}/reward.png"
-    echo "Generating reward plot for task: $task"
-    python data/plotter.py $data_files_str --output="$output_file"
-    echo "Plot saved as $output_file"
-    echo "-----------------------------------"
-
-    # Now, for each algorithm (excluding 'actor_critic' and 'a2c_no_nest'), plot 'cosine_similarities' and 'final_product'
-    for algo in "${algorithms[@]}"; do
-        if [[ "$algo" == "actor_critic" || "$algo" == "a2c_no_nest" ]]; then
-            continue  # Skip these algorithms
-        fi
-
-        echo "Generating additional plots for algorithm: $algo on task: $task"
-
-        # Collect data files for different lambda values for this algorithm
-        algo_data_files=()
-        for lam in 0.0 10.0 100.0 1000.0 100000.0; do
-            algo_data_files+=("data/${task}/${algo}_lambda${lam}.csv")
         done
-        algo_data_files_str="${algo_data_files[@]}"
 
-        # Plot 'cosine_similarities'
-        output_file="data/${task}/${algo}_cosine_similarities.png"
-        echo "Plotting cosine_similarities for $algo on $task"
-        python data/plotter.py $algo_data_files_str --output="$output_file" --column=cosine_similarities
-        echo "Plot saved as $output_file"
-
-        # Plot 'final_product'
-        output_file="data/${task}/${algo}_final_product.png"
-        echo "Plotting final_product for $algo on $task"
-        python data/plotter.py $algo_data_files_str --output="$output_file" --column=final_product
-        echo "Plot saved as $output_file"
+        echo "Completed runs for algorithm: $algo on task: $task. Configuration: $description"
         echo "-----------------------------------"
     done
 done

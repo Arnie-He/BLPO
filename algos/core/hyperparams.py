@@ -1,4 +1,5 @@
 import flax
+import flax.struct
 
 @flax.struct.dataclass
 class Hyperparams:
@@ -11,3 +12,6 @@ class Hyperparams:
     critic_learning_rate: float = flax.struct.field(pytree_node=False)
     nested_updates: int = flax.struct.field(pytree_node=False)
     adam_eps: float = flax.struct.field(pytree_node=False)
+    advantage_rate: float = flax.struct.field(pytree_node=False)
+    nystrom_rank: int = flax.struct.field(pytree_node=False)
+    nystrom_rho: int = flax.struct.field(pytree_node=False)
