@@ -153,7 +153,7 @@ def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
     """Runs an iteration of the training loop with the vanilla parallel update."""
     rng_key, rollout_key = jax.random.split(rng_key, 2)
     transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
-    advantages, targets = calc_values(critic_state, critic_state.params, transitions, last_observation, hyperparams.discount_rate)
+    advantages, targets = calc_values(critic_state, critic_state.params, transitions, last_observation, hyperparams.discount_rate, hyperparams.advantage_rate)
 
     actor_state, actor_loss = update_actor(actor_state, transitions, advantages)
     critic_loss = 0

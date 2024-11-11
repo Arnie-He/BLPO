@@ -127,7 +127,7 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
     def leader_f2_loss(actor_params, critic_params):
         action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(actor_params, transitions.observation)
         log_probs = action_dists.log_prob(transitions.action)
-        advantages, _ = calc_values(critic_state, critic_params, transitions, last_observation, hyperparams.discount_rate)
+        advantages, _ = calc_values(critic_state, critic_params, transitions, last_observation, hyperparams.discount_rate, advantage_rate = hyperparams.advantage_rate)
         result = advantages[:-1] * (hyperparams.discount_rate * advantages[1:] * log_probs[1:] - advantages[:-1] * log_probs[:-1])
 
         result = 2 * jnp.mean(result) 
@@ -234,7 +234,7 @@ def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams,
     """Runs an iteration of the training loop with the vanilla parallel update."""
     rng_key, rollout_key = jax.random.split(rng_key, 2)
     transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
-    advantages, targets = calc_values(critic_state, critic_state.params, transitions, last_observation, hyperparams.discount_rate)
+    advantages, targets = calc_values(critic_state, critic_state.params, transitions, last_observation, hyperparams.discount_rate, hyperparams.advantage_rate)
 
     actor_state, actor_info, actor_loss = update_leaderactor(actor_state, critic_state, transitions, advantages, targets, last_observation, hyperparams=hyperparams, vanilla=vanilla)
     critic_loss = 0
