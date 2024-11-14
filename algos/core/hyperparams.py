@@ -1,5 +1,6 @@
 import flax
 import flax.struct
+import jax.numpy as jnp
 
 @flax.struct.dataclass
 class Hyperparams:

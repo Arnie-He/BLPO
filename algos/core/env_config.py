@@ -22,7 +22,7 @@ ENV_CONFIG = {
             critic_learning_rate=0.008,
             adam_eps=1e-5,
             advantage_rate=0.95,
-            nystrom_rank= 100,
+            nystrom_rank= 10,
             nystrom_rho = 50,
         ),
     },

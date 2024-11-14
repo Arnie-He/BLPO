@@ -62,29 +62,6 @@ def run_rollout(env, env_params, length, actor_state, rng_key):
     a, n, last_observation, r = rollout_state
     return (transitions, last_observation)
 
-# @jax.jit
-# def calc_values(critic_state, critic_params, transitions, last_observation, discount_rate):
-#     """Calculates the advantage estimate at each time step."""
-#     values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
-#     last_value = critic_state.apply_fn(critic_params, last_observation)
-
-#     def calc_advantage(next_value, value_info):
-#         value, reward, done = value_info
-#         target = reward + discount_rate * next_value * (1 - done)
-#         advantage = target - value
-#         return (value, (advantage, target))
-
-#     v, result = jax.lax.scan(
-#         calc_advantage,
-#         init=last_value,
-#         xs=(values, transitions.reward, transitions.done),
-#         reverse=True,
-#     )
-#     advantages, targets = result
-#     advantages = (advantages - jnp.mean(advantages)) / (jnp.std(advantages) + 1e-8)
-
-#     return (advantages, targets)
-
 @jax.jit
 def calc_values(critic_state, critic_params, transitions, last_observation, discount_rate, advantage_rate=0.95):
     """Calculates the advantage estimate at each time step."""
@@ -138,75 +115,80 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
     # Single Gradients
     vgj = jax.value_and_grad(advantage_loss)
     actor_loss, grad_theta_J = vgj(actor_state.params, transitions, advantages)
-    
-    grad_w_J = grad(target_loss, 0)(critic_state.params, transitions, targets, critic_state)
 
-    grad_w_J_flat, unflatten_fn = jax.flatten_util.ravel_pytree(critic_state.params)
-    def nystrom_hvp(rank, rho, lambda_reg=0):
-        # Step 1: Compute the gradients of the outer objective with respect to the inner and outer params
-        out_out_g = jax.grad(advantage_loss, argnums=0)(actor_state.params, transitions, advantages)
-        out_in_g = jax.grad(leader_f2_loss, argnums=1)(actor_state.params, critic_state.params)
+    def hypergrad():
+        _, unflatten_fn = jax.flatten_util.ravel_pytree(critic_state.params)
+        def nystrom_hvp(rank, rho, lambda_reg=0):
+            # Step 1: Compute the gradients of the outer objective with respect to the inner and outer params
+            # out_out_g = jax.grad(advantage_loss, argnums=0)(actor_state.params, transitions, advantages)
+            out_in_g = jax.grad(leader_f2_loss, argnums=1)(actor_state.params, critic_state.params)
+            
+            # Step 2: Select random rows for low-rank approximation
+            param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
+            indices = jax.random.permutation(jax.random.PRNGKey(0), param_size)[:rank]
+
+            # Helper function to select Hessian rows using the inner objective
+            def select_grad_row(in_params, indices):
+                grad = jax.grad(lambda params: target_loss(params, transitions, targets, critic_state))(in_params)
+                grad_flat, _ = jax.flatten_util.ravel_pytree(grad)
+                return grad_flat[indices]
+
+            # Step 3: Approximate Hessian rows using the selected indices
+            hessian_rows = jax.jacrev(select_grad_row)(critic_state.params, indices)
+
+            # Flattening the hessian rows pytree into a single vector for concatenation
+            hessian_rows_flat, _ = jax.flatten_util.ravel_pytree(hessian_rows)
+
+            # Step 4: Concatenate the rows to form matrix C
+            C = jnp.reshape(hessian_rows_flat, (rank, -1))
+
+            # Step 5: Apply the Woodbury matrix identity to compute the inverse Hessian-vector product
+            M = C.take(indices, axis=1)
+            v_flat, _ = jax.flatten_util.ravel_pytree(out_in_g)
+            
+            # Compute the inverse Hessian-vector product using Woodbury identity
+            x = (1 / (rho )) * v_flat - (1 / ((rho ) ** 2)) * C.T @ jax.scipy.linalg.solve(M + (1 / rho) * C @ C.T +  jnp.eye(M.shape[0]), C @ v_flat)
+
+            # Step 6: Ensure the result is a flat vector that can be unraveled
+            return x 
         
-        # Step 2: Select random rows for low-rank approximation
-        param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
-        indices = jax.random.permutation(jax.random.PRNGKey(0), param_size)[:rank]
+        inverse_hvp_flat = nystrom_hvp(hyperparams.nystrom_rank, hyperparams.nystrom_rho)
+        inverse_hvp = unflatten_fn(inverse_hvp_flat)
 
-        # Helper function to select Hessian rows using the inner objective
-        def select_grad_row(in_params, indices):
-            grad = jax.grad(lambda params: target_loss(params, transitions, targets, critic_state))(in_params)
-            grad_flat, _ = jax.flatten_util.ravel_pytree(grad)
-            return grad_flat[indices]
+        # 6. Compute mixed gradient and its transpose: [∇²_θ,ν V_s(ν, θ*(ν))]^T
+        def mixed_grad_fn(policy_params, critic_params):
+            return jax.grad(leader_f2_loss)(policy_params, critic_params)
 
-        # Step 3: Approximate Hessian rows using the selected indices
-        hessian_rows = jax.jacrev(select_grad_row)(critic_state.params, indices)
+        # 7. Compute the final product: [∇²_θ,ν V_s(ν, θ*(ν))]^T * [∇²_θ V_s(ν, θ*(ν))]^(-1) * ∇_θ L_pref(ν)
+        # We use JVP to compute this product efficiently
+        _, final_product = jax.jvp(
+            lambda p: mixed_grad_fn(actor_state.params, p),
+            (critic_state.params,),
+            (inverse_hvp,)
+        )
 
-        # Flattening the hessian rows pytree into a single vector for concatenation
-        hessian_rows_flat, _ = jax.flatten_util.ravel_pytree(hessian_rows)
+        hypergradient = jax.tree_util.tree_map(lambda x, y: x - y, grad_theta_J, final_product)
 
-        # Step 4: Concatenate the rows to form matrix C
-        C = jnp.reshape(hessian_rows_flat, (rank, -1))
+        hypergradient_norms = optax.global_norm(hypergradient)
+        final_product_norms = optax.global_norm(final_product)
+        co_sim = cosine_similarity(final_product, grad_theta_J)
 
-        # Step 5: Apply the Woodbury matrix identity to compute the inverse Hessian-vector product
-        M = C.take(indices, axis=1)
-        v_flat, _ = jax.flatten_util.ravel_pytree(out_in_g)
-        
-        # Compute the inverse Hessian-vector product using Woodbury identity
-        x = (1 / (rho )) * v_flat - (1 / ((rho ) ** 2)) * C.T @ jax.scipy.linalg.solve(M + (1 / rho) * C @ C.T +  jnp.eye(M.shape[0]), C @ v_flat)
-
-        # Step 6: Ensure the result is a flat vector that can be unraveled
-        return x 
+        return (hypergradient, hypergradient_norms, final_product_norms, co_sim)
     
-    inverse_hvp_flat = nystrom_hvp(hyperparams.nystrom_rank, hyperparams.nystrom_rho)
-    inverse_hvp = unflatten_fn(inverse_hvp_flat)
+    def vanilla_grad():
+        return (grad_theta_J, 0.0, 0.0, 0.0)
 
-    # 6. Compute mixed gradient and its transpose: [∇²_θ,ν V_s(ν, θ*(ν))]^T
-    def mixed_grad_fn(policy_params, critic_params):
-        return jax.grad(leader_f2_loss)(policy_params, critic_params)
-
-    # 7. Compute the final product: [∇²_θ,ν V_s(ν, θ*(ν))]^T * [∇²_θ V_s(ν, θ*(ν))]^(-1) * ∇_θ L_pref(ν)
-    # We use JVP to compute this product efficiently
-    _, final_product = jax.jvp(
-        lambda p: mixed_grad_fn(actor_state.params, p),
-        (critic_state.params,),
-        (inverse_hvp,)
+    total_gradient, hypergradient_norms, final_product_norms, co_sim = jax.lax.cond(
+        vanilla,
+        true_fun=lambda : vanilla_grad(),
+        false_fun=lambda : hypergrad()
     )
-    
-    # projection 
-    # final_product = project_B_onto_A(grad_theta_J, final_product)
-
-    # vanilla = True
-    # final_product = clip_grad_norm(final_product, 0.2*optax.global_norm(grad_theta_J))
-    hypergradient = jax.tree_util.tree_map(lambda x, y: x -y, grad_theta_J, final_product)
-    hypergradient = jax.lax.cond(vanilla, lambda: grad_theta_J, lambda: hypergradient)
-    actor_state = actor_state.apply_gradients(grads=hypergradient)
-    
-    #print all norms
-    hypergradient_norms = optax.global_norm(hypergradient)
-    final_product_norms = optax.global_norm(final_product)
-
-    co_sim = cosine_similarity(final_product, grad_theta_J)
+    actor_state = actor_state.apply_gradients(grads=total_gradient)
 
     return (actor_state, (hypergradient_norms, final_product_norms, co_sim), actor_loss)
+
+    # actor_state = actor_state.apply_gradients(grads=grad_theta_J)
+    # return (actor_state, (0,0,0), actor_loss)
 
 def update_critic(critic_state, transitions, targets):
     """Calculates and applies the value target gradient at each time step."""
@@ -267,6 +249,8 @@ def train(env_key, seed, logger, hyperparams, verbose=True, vanilla=False):
     # Create environment
     config = ENV_CONFIG[env_key]
 
+    print(hyperparams)
+
     rng_key, actor_key, critic_key = jax.random.split(jax.random.key(seed), 3)
     env, env_params = gymnax.make(ENV_NAMES[env_key])
     empty_observation = jnp.empty(env.observation_space(env_params).shape)
@@ -286,11 +270,13 @@ def train(env_key, seed, logger, hyperparams, verbose=True, vanilla=False):
         apply_fn=jax.jit(actor.apply),
         params=actor_params,
         tx=optax.adam(hyperparams.actor_learning_rate, eps=hyperparams.adam_eps),
+        # tx=optax.adam(0.003, eps=hyperparams.adam_eps),
     )
     critic_state = TrainState.create(
         apply_fn=jax.jit(critic.apply),
         params=critic_params,
         tx=optax.adam(hyperparams.critic_learning_rate, eps=hyperparams.adam_eps),
+        # tx=optax.adam(0.008, eps=hyperparams.adam_eps),
     )
 
 
@@ -300,7 +286,7 @@ def train(env_key, seed, logger, hyperparams, verbose=True, vanilla=False):
     num_batches = int(hyperparams.num_updates / hyperparams.batch_count)
     for b in range(num_batches):
         actor_state, critic_state, batch_metrics, rng_key = \
-            run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams)
+            run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla)
         
         logger.log_metrics({
             "reward": batch_metrics[0],

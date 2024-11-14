@@ -17,9 +17,6 @@ from algos.core.hyperparams import Hyperparams
 from algos.core.env_config import ENV_CONFIG
 from algos.core.config import ALGO_CONFIG
 
-actor_lr = 0.0025
-critic_lr = 0.008
-nested_updates = 10
 
 @flax.struct.dataclass
 class Transition:
@@ -60,28 +57,6 @@ def run_rollout(env, env_params, length, actor_state, rng_key):
     )
     a, n, last_observation, r = rollout_state
     return (transitions, last_observation)
-
-# def calc_values(critic_state, transitions, last_observation, discount_rate):
-#     """Calculates the advantage estimate at each time step."""
-#     values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_state.params, transitions.observation)
-#     last_value = critic_state.apply_fn(critic_state.params, last_observation)
-
-#     def calc_advantage(next_value, value_info):
-#         value, reward, done = value_info
-#         target = reward + discount_rate * next_value * (1 - done)
-#         advantage = target - value
-#         return (value, (advantage, target))
-
-#     v, result = jax.lax.scan(
-#         calc_advantage,
-#         init=last_value,
-#         xs=(values, transitions.reward, transitions.done),
-#         reverse=True,
-#     )
-#     advantages, targets = result
-#     advantages = (advantages - jnp.mean(advantages)) / (jnp.std(advantages) + 1e-8)
-
-#     return (advantages, targets)
 
 @jax.jit
 def calc_values(critic_state, critic_params, transitions, last_observation, discount_rate, advantage_rate=0.95):
@@ -158,7 +133,7 @@ def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
     actor_state, actor_loss = update_actor(actor_state, transitions, advantages)
     critic_loss = 0
 
-    for c in range(nested_updates):
+    for c in range(hyperparams.nested_updates):
         critic_state, critic_loss = update_critic(critic_state, transitions, targets)
 
     total_rewards = calc_episode_rewards(transitions)
@@ -187,6 +162,8 @@ def train(env_key, seed, logger, hyperparams, verbose = False):
     # Create environment
     config = ENV_CONFIG[env_key]
 
+    print(hyperparams)
+
     rng_key, actor_key, critic_key = jax.random.split(jax.random.key(seed), 3)
     env, env_params = gymnax.make(ENV_NAMES[env_key])
     empty_observation = jnp.empty(env.observation_space(env_params).shape)
@@ -201,16 +178,21 @@ def train(env_key, seed, logger, hyperparams, verbose = False):
     critic = config["critic_model"](*critic_model_params)
     critic_params = critic.init(critic_key, empty_observation)
 
+    # print(hyperparams.actor_learning_rate == 0.003)
+    # print(hyperparams.actor_learning_rate.dtype)
+
     # Create actor and critic train states
     actor_state = TrainState.create(
         apply_fn=jax.jit(actor.apply),
         params=actor_params,
-        tx=optax.adam(actor_lr, eps=hyperparams.adam_eps),
+        tx=optax.adam(hyperparams.actor_learning_rate, eps=hyperparams.adam_eps),
+        # tx=optax.adam(jnp.float32(0.003), eps=hyperparams.adam_eps),
     )
     critic_state = TrainState.create(
         apply_fn=jax.jit(critic.apply),
         params=critic_params,
-        tx=optax.adam(critic_lr, eps=hyperparams.adam_eps),
+        tx=optax.adam(hyperparams.critic_learning_rate, eps=hyperparams.adam_eps),
+        # tx=optax.adam(jnp.float32(0.008), eps=hyperparams.adam_eps),
     )
 
     # Set logger info
