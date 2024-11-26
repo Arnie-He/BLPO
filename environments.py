@@ -1,6 +1,6 @@
 # Gymnax environment names
 
-ENV_NAMES = {
+GYM_ENV_NAMES = {
     "cartpole": "CartPole-v1",
     "pendulum": "Pendulum-v1",
     "acrobot": "Acrobot-v1",
@@ -15,4 +15,12 @@ ENV_NAMES = {
     "space_invaders": "SpaceInvaders-MinAtar",
     "breakout": "Breakout-MinAtar",
     "asterix": "Asterix-MinAtar",
+
+    "umbrella": "UmbrellaChain-bsuite",
+}
+
+JUMANJI_ENV_NAMES = {
+    "snake": "Snake-v1",
+    "maze": "Maze-v0",
+    "Knapsack": "Knapsack-v1",
 }

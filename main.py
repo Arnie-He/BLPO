@@ -2,14 +2,16 @@ import argparse
 import jax
 import os
 
-from algos.StackelbergRL import ratliff, stac_critic, stac_Critic, stac_Actor_newGrad_Nystrom, stac_Actor_newGrad_CG
+from algos.StackelbergRL import stac_Actor_Nystrom_Gym, stac_Actor_Nystrom_Jax, StackelbergPPO
+from algos.StackelbergRL import stac_Actor_CG
+# from algos.StackelbergRL import ratliff, stac_critic, stac_Critic
 from algos.baselines import discrete_actor_critic, discrete_ppo, discrete_reinforce
 # from algos.baselines import actor_critic_NoNesting
-from bilevel_actor_critic import unrolling_actor_redo, lambda_regret
+# from bilevel_actor_critic import unrolling_actor_redo, lambda_regret
 
 from loggers.chart_logger import ChartLogger
 from algos.core.env_config import ENV_CONFIG
-from algos.core.hyperparams import Hyperparams
+from algos.core.env_config import Hyperparams
 
 from dataclasses import replace
 
@@ -21,12 +23,13 @@ algos = {
     "actor_critic": discrete_actor_critic,
     "ppo": discrete_ppo,
     "reinforce": discrete_reinforce,
-    "ratliff": ratliff,
-    "stac-actor": stac_Actor_newGrad_Nystrom,
+    # "ratliff": ratliff,
+    "stac-actor": stac_Actor_Nystrom_Jax,
+    "stppo": StackelbergPPO,
     # "stac-actor": stac_Actor_newGrad_CG,
-    "stac-critic": stac_critic,
-    "unrolling": unrolling_actor_redo,
-    "penalty": lambda_regret,
+    # "stac-critic": stac_critic,
+    # "unrolling": unrolling_actor_redo,
+    # "penalty": lambda_regret,
 }
 
 def main():
@@ -54,7 +57,7 @@ def main():
     if args.cpu:
         run_on_cpu()
     ST=True
-    if(args.algo == "stac-actor" or args.algo == "ratliff"):
+    if(args.algo == "stac-actor" or args.algo == "ratliff" or args.algo=="stppo"):
         ST=False
     if not(ST):
         metrics = [

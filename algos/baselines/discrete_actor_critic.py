@@ -1,6 +1,6 @@
-from environments import ENV_NAMES
+from environments import GYM_ENV_NAMES
 from models.critic import Critic, PixelCritic
-from models.discrete_actor import DiscreteActor, DiscretePixelActor
+from models.actor import DiscreteActor, DiscretePixelActor
 import models.params
 from models.params import DynParam
 
@@ -13,7 +13,7 @@ import jax
 import jax.numpy as jnp
 import optax
 
-from algos.core.hyperparams import Hyperparams
+from algos.core.env_config import Hyperparams
 from algos.core.env_config import ENV_CONFIG
 from algos.core.config import ALGO_CONFIG
 
@@ -165,7 +165,7 @@ def train(env_key, seed, logger, hyperparams, verbose = False):
     print(hyperparams)
 
     rng_key, actor_key, critic_key = jax.random.split(jax.random.key(seed), 3)
-    env, env_params = gymnax.make(ENV_NAMES[env_key])
+    env, env_params = gymnax.make(GYM_ENV_NAMES[env_key])
     empty_observation = jnp.empty(env.observation_space(env_params).shape)
 
     # Initialize actor model

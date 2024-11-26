@@ -1,6 +1,6 @@
-from environments import ENV_NAMES
+from environments import GYM_ENV_NAMES
 from models.critic import Critic, PixelCritic
-from models.discrete_actor import DiscreteActor, DiscretePixelActor
+from models.actor import DiscreteActor, DiscretePixelActor
 import models.params
 from models.params import DynParam
 
@@ -17,10 +17,10 @@ from jax import flatten_util
 from jax.scipy.sparse.linalg import cg
 import json
 
-from algos.core.hyperparams import Hyperparams
+from algos.core.env_config import Hyperparams
 from algos.core.env_config import ENV_CONFIG
 from algos.core.config import ALGO_CONFIG
-from algos.StackelbergRL.understanding_gradients import cosine_similarity, project_B_onto_A
+from algos.core.understanding_gradients import cosine_similarity, project_B_onto_A
 
 @flax.struct.dataclass
 class Transition:
@@ -157,7 +157,7 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
     
     grad_w_J_flat, unflatten_fn = jax.flatten_util.ravel_pytree(grad_w_J)
     def cg_solve(v):
-        return jax.scipy.sparse.linalg.cg(hvp, v, maxiter=10, tol=1e-10)[0]
+        return jax.scipy.sparse.linalg.cg(hvp, v, maxiter=20, tol=1e-10)[0]
     inverse_hvp_flat = cg_solve(grad_w_J_flat)
     inverse_hvp = unflatten_fn(inverse_hvp_flat)
 
@@ -245,13 +245,16 @@ def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, 
     actor_state, critic_state, rng_key = batch_state
     return (actor_state, critic_state, batch_metrics, rng_key)
 
-def train(env_key, seed, logger, verbose=True, vanilla=False, lam=0.0):
+def train(env_key, seed, logger, hyperparams, verbose, vanilla=False):
     # Create environment
+
+    lam = jnp.float32(0)
+
     config = ENV_CONFIG[env_key]
     hyperparams = config["hyperparams"]
 
     rng_key, actor_key, critic_key = jax.random.split(jax.random.key(seed), 3)
-    env, env_params = gymnax.make(ENV_NAMES[env_key])
+    env, env_params = gymnax.make(GYM_ENV_NAMES[env_key])
     empty_observation = jnp.empty(env.observation_space(env_params).shape)
 
     # Initialize actor model
@@ -283,7 +286,7 @@ def train(env_key, seed, logger, verbose=True, vanilla=False, lam=0.0):
     num_batches = int(hyperparams.num_updates / hyperparams.batch_count)
     for b in range(num_batches):
         actor_state, critic_state, batch_metrics, rng_key = \
-            run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, lam=lam)
+            run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla=vanilla, lam=lam)
         
         logger.log_metrics({
             "reward": batch_metrics[0],

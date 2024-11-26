@@ -1,6 +1,9 @@
+from distrax import Categorical
 from flax import linen as nn
-import jax.numpy as jnp
 from typing import Any, Sequence
+from flax.linen.initializers import constant, orthogonal
+import numpy as np
+import jax.numpy as jnp
 
 class Critic(nn.Module):
     """
@@ -13,10 +16,10 @@ class Critic(nn.Module):
     def __call__(self, input):
         out = input.ravel()
         for layer in self.hidden_sizes:
-            out = nn.Dense(layer)(out)
-            out = nn.relu(out)
-        out = nn.Dense(1)(out)
-        return jnp.squeeze(out)
+            out = nn.Dense(layer, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0))(out)
+            out = nn.tanh(out)
+        out = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))(out)
+        return jnp.squeeze(out, -1)
 
 class PixelCritic(nn.Module):
     """

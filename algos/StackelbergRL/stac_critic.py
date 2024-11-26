@@ -1,6 +1,6 @@
-from environments import ENV_NAMES
+from environments import GYM_ENV_NAMES
 from models.critic import Critic, PixelCritic
-from models.discrete_actor import DiscreteActor, DiscretePixelActor
+from models.actor import DiscreteActor, DiscretePixelActor
 import models.params
 from models.params import DynParam
 
@@ -287,7 +287,7 @@ def train(env_key, seed, logger, verbose = False, metrics=None, vanilla=False, s
     config = ENV_CONFIG[env_key]
     hyperparams = config["hyperparams"]
     rng_key, actor_key, critic_key = jax.random.split(jax.random.key(seed), 3)
-    env, env_params = gymnax.make(ENV_NAMES[env_key])
+    env, env_params = gymnax.make(GYM_ENV_NAMES[env_key])
     empty_observation = jnp.empty(env.observation_space(env_params).shape)
 
     # Initialize actor model

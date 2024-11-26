@@ -1,6 +1,6 @@
 from environments import ENV_NAMES
 from models.critic import Critic, PixelCritic
-from models.discrete_actor import DiscreteActor, DiscretePixelActor
+from models.actor import DiscreteActor, DiscretePixelActor
 import models.params
 from models.params import DynParam
 
@@ -17,7 +17,7 @@ from jax import flatten_util
 from jax.scipy.sparse.linalg import cg
 import json
 
-from algos.core.hyperparams import Hyperparams
+from algos.core.env_config import Hyperparams
 from algos.core.env_config import ENV_CONFIG
 from algos.core.config import ALGO_CONFIG
 

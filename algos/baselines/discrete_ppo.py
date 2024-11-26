@@ -1,6 +1,6 @@
-from environments import ENV_NAMES
+from environments import GYM_ENV_NAMES
 from models.critic import Critic
-from models.discrete_actor import DiscreteActor
+from models.actor import DiscreteActor
 import models.params
 from models.params import DynParam
 
@@ -11,62 +11,10 @@ import gymnax
 import jax
 import jax.numpy as jnp
 import optax
+from algos.core.env_config import Hyperparams
+from algos.core.env_config import ENV_CONFIG
+from algos.core.purejxrl_wrappers import LogWrapper, FlattenObservationWrapper
 
-@functools.partial(flax.struct.dataclass, kw_only=True)
-class Hyperparams:
-    """A data class that stores hyperparameter configurations."""
-    num_updates: int = flax.struct.field(pytree_node=False)
-    batch_count: int = flax.struct.field(pytree_node=False)
-    rollout_len: int = flax.struct.field(pytree_node=False)
-    discount_rate: float = flax.struct.field(pytree_node=False)
-    advantage_rate: float = flax.struct.field(pytree_node=False)
-    num_minibatches: int = flax.struct.field(pytree_node=False)
-    update_epochs: int = flax.struct.field(pytree_node=False)
-    actor_learning_rate: float = flax.struct.field(pytree_node=False)
-    actor_clip: float = flax.struct.field(pytree_node=False)
-    critic_learning_rate: float = flax.struct.field(pytree_node=False)
-    adam_eps: float = flax.struct.field(pytree_node=False)
-
-ENV_CONFIG = {
-    "cartpole": {
-        "actor_model": DiscreteActor,
-        "actor_params": [(30, 15), DynParam.ActionCount],
-        "critic_model": Critic,
-        "critic_params": [(30, 15)],
-        "hyperparams": Hyperparams(
-            num_updates=1000,
-            batch_count=50,
-            rollout_len=1000,
-            discount_rate=0.99,
-            advantage_rate=0.95,
-            num_minibatches=5,
-            update_epochs=4,
-            actor_learning_rate=0.0003,
-            actor_clip=0.2,
-            critic_learning_rate=0.008,
-            adam_eps=1e-5,
-        ),
-    },
-    "catch": {
-        "actor_model": DiscreteActor,
-        "actor_params": [(30, 15), DynParam.ActionCount],
-        "critic_model": Critic,
-        "critic_params": [(30, 15)],
-        "hyperparams": Hyperparams(
-            num_updates=1000,
-            batch_count=50,
-            rollout_len=1000,
-            discount_rate=0.99,
-            advantage_rate=0.95,
-            num_minibatches=5,
-            update_epochs=4,
-            actor_learning_rate=0.0004,
-            actor_clip=0.2,
-            critic_learning_rate=0.01,
-            adam_eps=1e-5,
-        ),
-    },
-}
 
 @flax.struct.dataclass
 class Transition:
@@ -76,39 +24,6 @@ class Transition:
     reward: jnp.ndarray
     done: jnp.ndarray
     log_prob: jnp.ndarray
-
-def run_rollout(env, env_params, length, actor_state, rng_key):
-    """Collects an actor policy rollout with a fixed number of steps."""
-    rng_key, reset_key = jax.random.split(rng_key, 2)
-    observation, env_state = env.reset(reset_key, env_params)
-
-    def step(rollout_state, x):
-        """Advances the environment by 1 step by sampling from the policy."""
-        # Sample action
-        actor_state, env_state, observation, rng_key = rollout_state
-        rng_key, action_key, step_key = jax.random.split(rng_key, 3)
-        action_dist = actor_state.apply_fn(actor_state.params, observation)
-        action = action_dist.sample(seed=action_key)
-        log_prob = action_dist.log_prob(action)
-
-        # Run environment step
-        next_observation, next_state, reward, done, i = env.step(
-            step_key, env_state, action, env_params,
-        )
-        transition = Transition(
-            observation, action, reward, done, log_prob,
-        )
-
-        next_step = (actor_state, next_state, next_observation, rng_key)
-        return (next_step, transition)
-
-    rollout_state, transitions = jax.lax.scan(
-        step,
-        init=(actor_state, env_state, observation, rng_key),
-        length=length,
-    )
-    a, n, last_observation, r = rollout_state
-    return (transitions, last_observation)
 
 def calc_values(critic_state, transitions, last_observation, discount_rate, advantage_rate):
     """Calculates the advantage estimate at each time step."""
@@ -181,10 +96,43 @@ def calc_episode_rewards(transitions):
     )
     return rewards
 
-def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams):
+def run_update(obsv, env_state, env, env_params, actor_state, critic_state, rng_key, hyperparams):
     """Runs an iteration of the training loop with the vanilla parallel update."""
     # Collect transitions and calculate advantages and targets
     rng_key, rollout_key, shuffle_key = jax.random.split(rng_key, 3)
+
+    def run_rollout(obsv, env_state, env, env_params, length, actor_state, rng_key):
+        """Collects an actor policy rollout with a fixed number of steps."""
+        rng_key, reset_key = jax.random.split(rng_key, 2)
+
+        def step(rollout_state, x):
+            """Advances the environment by 1 step by sampling from the policy."""
+            # Sample action
+            actor_state, env_state, observation, rng_key = rollout_state
+            rng_key, action_key, step_key = jax.random.split(rng_key, 3)
+            action_dist = actor_state.apply_fn(actor_state.params, observation)
+            action = action_dist.sample(seed=action_key)
+            log_prob = action_dist.log_prob(action)
+
+            # Run environment step
+            obsv, env_state, reward, done, i = jax.vmap(env.step, in_axes=(0, 0, 0, None)).step(
+                step_key, env_state, action, env_params,
+            )
+            transition = Transition(
+                observation, action, reward, done, log_prob,
+            )
+
+            next_step = (actor_state, next_state, next_observation, rng_key)
+            return (next_step, transition)
+
+        rollout_state, transitions = jax.lax.scan(
+            step,
+            init=(actor_state, env_state, observation, rng_key),
+            length=length,
+        )
+        a, n, last_observation, r = rollout_state
+        return (transitions, last_observation)
+
     transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
     advantages, targets = calc_values(
         critic_state,
@@ -237,38 +185,46 @@ def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
     )
 
 @functools.partial(jax.jit, static_argnums=0)
-def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams):
+def run_batch(obsv, env_state, env, env_params, actor_state, critic_state, rng_key, hyperparams):
     """Trains the model for a batch of updates."""
-    def run_once(batch_state, x):
+
+    runner_state = (obsv, env_state, actor_state, critic_state, rng_key, hyperparams)
+
+    def run_once(runner_state, unused):
         """Runs an update and carries over the train state."""
-        actor_state, critic_state, rng_key = batch_state
-        actor_state, critic_state, metrics, rng_key = \
-            run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
-        return ((actor_state, critic_state, rng_key), metrics)
+        obsv, env_state, actor_state, critic_state, rng_key = runner_state
+        obsv, env_state, actor_state, critic_state, metrics, rng_key = \
+            run_update(obsv, env_state, env_params, actor_state, critic_state, rng_key, hyperparams)
+        return ((obsv, env_state, actor_state, critic_state, rng_key), metrics)
 
     batch_state, batch_metrics = jax.lax.scan(
         run_once,
-        init=(actor_state, critic_state, rng_key),
-        length=hyperparams.batch_count,
+        init=runner_state,
+        length=hyperparams.update_epochs,
     )
     actor_state, critic_state, rng_key = batch_state
     return (actor_state, critic_state, batch_metrics, rng_key)
 
-def train(env_key, seed, logger, verbose = False):
+def train(env_key, seed, logger, hyperparams, verbose = False):
     # Create environment
     config = ENV_CONFIG[env_key]
     hyperparams = config["hyperparams"]
+
+    # Make Gymnax Environments
     rng_key, actor_key, critic_key = jax.random.split(jax.random.key(seed), 3)
-    env, env_params = gymnax.make(ENV_NAMES[env_key])
+    env, env_params = gymnax.make(GYM_ENV_NAMES[env_key])
+    env = FlattenObservationWrapper(env)
+    env = LogWrapper(env)
+
     empty_observation = jnp.empty(env.observation_space(env_params).shape)
 
     # Initialize actor model
-    actor_model_params = models.params.init(env, env_params, config["actor_params"])
+    actor_model_params = models.params.init_gymnax(env, env_params, config["actor_params"])
     actor = config["actor_model"](*actor_model_params)
     actor_params = actor.init(actor_key, empty_observation)
 
     # Initialize critic model
-    critic_model_params = models.params.init(env, env_params, config["critic_params"])
+    critic_model_params = models.params.init_gymnax(env, env_params, config["critic_params"])
     critic = config["critic_model"](*critic_model_params)
     critic_params = critic.init(critic_key, empty_observation)
 
@@ -285,28 +241,34 @@ def train(env_key, seed, logger, verbose = False):
     )
 
     # Set logger info
-    logger.set_interval(hyperparams.rollout_len)
+    logger.set_interval(hyperparams.rollout_len * hyperparams.num_env)
     logger.set_info(
         "reward",
-        f"[{ENV_NAMES[env_key]}] PPO average reward",
+        f"[{GYM_ENV_NAMES[env_key]}] PPO average reward",
         f"charts/ppo/{env_key}_reward.png",
     )
     logger.set_info(
         "actor_loss",
-        f"[{ENV_NAMES[env_key]}] PPO actor loss",
+        f"[{GYM_ENV_NAMES[env_key]}] PPO actor loss",
         f"charts/ppo/{env_key}_actor_loss.png",
     )
     logger.set_info(
         "critic_loss",
-        f"[{ENV_NAMES[env_key]}] PPO critic loss",
+        f"[{GYM_ENV_NAMES[env_key]}] PPO critic loss",
         f"charts/ppo/{env_key}_critic_loss.png",
     )
 
     # Run the training loop
-    num_batches = int(hyperparams.num_updates / hyperparams.batch_count)
+    num_batches = int(hyperparams.total_timesteps // hyperparams.num_envs // hyperparams.rollout_len)
+    minibatch_size = (hyperparams.num_envs * hyperparams.rollout_len // hyperparams.num_minibatches)
+    rng, _rng = jax.random.split(rng)
+    reset_rng = jax.random.split(_rng, hyperparams.num_envs)
+    obsv, env_state = jax.vmap(env.reset, in_axes=(0, None))(reset_rng, env_params)
+
     for b in range(num_batches):
-        actor_state, critic_state, batch_metrics, rng_key = \
-            run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams)
+        actor_state, critic_state, obsv, env_state, batch_metrics, rng_key = \
+            run_batch(obsv, env_state, env_params, actor_state, critic_state, rng_key, hyperparams)
+        
         logger.log_metrics({
             "reward": batch_metrics[0],
             "actor_loss": batch_metrics[1],

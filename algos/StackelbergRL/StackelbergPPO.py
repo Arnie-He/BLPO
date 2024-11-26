@@ -1,26 +1,19 @@
-from environments import ENV_NAMES
-from models.critic import Critic, PixelCritic
-from models.discrete_actor import DiscreteActor, DiscretePixelActor
+from environments import GYM_ENV_NAMES
+from models.critic import Critic
+from models.actor import DiscreteActor
 import models.params
 from models.params import DynParam
 
 import flax
-import flax.linen as nn
 from flax.training.train_state import TrainState
 import functools
 import gymnax
 import jax
-from jax import grad, jacfwd, jacrev
 import jax.numpy as jnp
 import optax
-from jax import flatten_util
-from jax.scipy.sparse.linalg import cg
-import json
 
-from algos.core.hyperparams import Hyperparams
 from algos.core.env_config import ENV_CONFIG
-from algos.core.config import ALGO_CONFIG
-from algos.StackelbergRL.understanding_gradients import cosine_similarity, project_B_onto_A
+from algos.core.understanding_gradients import cosine_similarity
 
 @flax.struct.dataclass
 class Transition:
@@ -29,6 +22,7 @@ class Transition:
     action: jnp.ndarray
     reward: jnp.ndarray
     done: jnp.ndarray
+    log_prob: jnp.ndarray
 
 def run_rollout(env, env_params, length, actor_state, rng_key):
     """Collects an actor policy rollout with a fixed number of steps."""
@@ -42,13 +36,14 @@ def run_rollout(env, env_params, length, actor_state, rng_key):
         rng_key, action_key, step_key = jax.random.split(rng_key, 3)
         action_dist = actor_state.apply_fn(actor_state.params, observation)
         action = action_dist.sample(seed=action_key)
+        log_prob = action_dist.log_prob(action)
 
         # Run environment step
         next_observation, next_state, reward, done, i = env.step(
             step_key, env_state, action, env_params,
         )
         transition = Transition(
-            observation, action, reward, done,
+            observation, action, reward, done, log_prob,
         )
 
         next_step = (actor_state, next_state, next_observation, rng_key)
@@ -62,8 +57,7 @@ def run_rollout(env, env_params, length, actor_state, rng_key):
     a, n, last_observation, r = rollout_state
     return (transitions, last_observation)
 
-@jax.jit
-def calc_values(critic_state, critic_params, transitions, last_observation, discount_rate, advantage_rate=0.95):
+def calc_values(critic_state, critic_params, transitions, last_observation, discount_rate, advantage_rate):
     """Calculates the advantage estimate at each time step."""
     values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(critic_params, transitions.observation)
     last_value = critic_state.apply_fn(critic_params, last_observation)
@@ -86,21 +80,35 @@ def calc_values(critic_state, critic_params, transitions, last_observation, disc
 
     return (advantages, targets)
 
-# follower-objective
+############################# Actor and Critic Update #####################
 def target_loss(params, transitions, targets, critic_state):
     """Calculates the mean squared error on a batch of transitions."""
     values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
     errors = jnp.square(targets - values)
     return jnp.mean(errors)
 
-def update_leaderactor(actor_state, critic_state, transitions, advantages, targets, last_observation, hyperparams, vanilla=False):
-    # Define the loss functions
-    def advantage_loss(params, transitions, advantages):
+def update_critic(critic_state, transitions, targets):
+    """Calculates and applies the value target gradient at each time step."""
+    target_grad = jax.value_and_grad(target_loss)
+    loss, grads = target_grad(critic_state.params, transitions, targets, critic_state)
+    critic_state = critic_state.apply_gradients(grads=grads)
+    return (critic_state, loss)
+
+def update_actor(actor_state, critic_state, transitions, advantages, targets, last_observation, hyperparams, clip, vanilla=False):
+    """Calculates and applies the PPO gradient estimator at each time step."""
+    def ppo_loss(params, transitions, advantages):
+        """Calculates the clipped advantage estimator on a batch of transitions."""
         action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(params, transitions.observation)
         log_probs = action_dists.log_prob(transitions.action)
+        prob_ratios = jnp.exp(log_probs - transitions.log_prob)
 
-        return -jnp.mean(advantages * log_probs) 
+        ppo_losses = prob_ratios * advantages
+        clipped_ratios = jnp.clip(prob_ratios, 1 - clip, 1 + clip)
+        clipped_losses = clipped_ratios * advantages
 
+        ppo_losses = jnp.minimum(ppo_losses, clipped_losses)
+        return -jnp.mean(ppo_losses)
+    
     def leader_f2_loss(actor_params, critic_params):
         action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(actor_params, transitions.observation)
         log_probs = action_dists.log_prob(transitions.action)
@@ -110,17 +118,17 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
         result = 2 * jnp.mean(result) 
         # result = clip_grad_norm(result, optax.global_norm(grad_theta_J))
 
-        return result 
-    
+        return result
+
     # Single Gradients
-    vgj = jax.value_and_grad(advantage_loss)
+    vgj = jax.value_and_grad(ppo_loss)
     actor_loss, grad_theta_J = vgj(actor_state.params, transitions, advantages)
 
     def hypergrad():
         _, unflatten_fn = jax.flatten_util.ravel_pytree(critic_state.params)
         def nystrom_hvp(rank, rho, lambda_reg=0):
             # Step 1: Compute the gradients of the outer objective with respect to the inner and outer params
-            # out_out_g = jax.grad(advantage_loss, argnums=0)(actor_state.params, transitions, advantages)
+            # out_out_g = jax.grad(ppo_loss, argnums=0)(actor_state.params, transitions, advantages)
             out_in_g = jax.grad(leader_f2_loss, argnums=1)(actor_state.params, critic_state.params)
             
             # Step 2: Select random rows for low-rank approximation
@@ -190,13 +198,6 @@ def update_leaderactor(actor_state, critic_state, transitions, advantages, targe
     # actor_state = actor_state.apply_gradients(grads=grad_theta_J)
     # return (actor_state, (0,0,0), actor_loss)
 
-def update_critic(critic_state, transitions, targets):
-    """Calculates and applies the value target gradient at each time step."""
-    target_grad = jax.value_and_grad(target_loss)
-    loss, grads = target_grad(critic_state.params, transitions, targets, critic_state)
-    critic_state = critic_state.apply_gradients(grads=grads)
-    return (critic_state, loss)
-
 def calc_episode_rewards(transitions):
     """Calculates the total real reward for each episode."""
     def calc_reward(prev_total, transition):
@@ -212,29 +213,78 @@ def calc_episode_rewards(transitions):
     )
     return rewards
 
-def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla=False):
+################################# Batch Update Functions ############################
+def run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams):
     """Runs an iteration of the training loop with the vanilla parallel update."""
-    rng_key, rollout_key = jax.random.split(rng_key, 2)
+    # Collect transitions and calculate advantages and targets
+    rng_key, rollout_key, shuffle_key = jax.random.split(rng_key, 3)
     transitions, last_observation = run_rollout(env, env_params, hyperparams.rollout_len, actor_state, rollout_key)
-    advantages, targets = calc_values(critic_state, critic_state.params, transitions, last_observation, hyperparams.discount_rate, hyperparams.advantage_rate)
+    advantages, targets = calc_values(
+        critic_state,
+        transitions,
+        last_observation,
+        hyperparams.discount_rate,
+        hyperparams.advantage_rate,
+    )
 
-    actor_state, actor_info, actor_loss = update_leaderactor(actor_state, critic_state, transitions, advantages, targets, last_observation, hyperparams=hyperparams, vanilla=vanilla)
-    critic_loss = 0
-    for c in range(hyperparams.nested_updates):
-        critic_state, critic_loss = update_critic(critic_state, transitions, targets)
-
+    # Calculate rewards before batching
     total_rewards = calc_episode_rewards(transitions)
     average_reward = jnp.sum(total_rewards * transitions.done) / jnp.sum(transitions.done)
-    return (actor_state, critic_state, (average_reward, actor_info, actor_loss, critic_loss), rng_key)
+
+    # Shuffle the transitions and split into minibatches
+    shuffle = jax.random.permutation(shuffle_key, hyperparams.rollout_len)
+    transitions = jax.tree.map(
+        lambda v: jnp.array(jnp.split(v[shuffle], hyperparams.num_minibatches)),
+        transitions,
+    )
+    advantages = jnp.array(jnp.split(advantages[shuffle], hyperparams.num_minibatches))
+    targets = jnp.array(jnp.split(targets[shuffle], hyperparams.num_minibatches))
+
+    # # Process last_observations
+    # last_observations = []
+    # for i in range(len(advantages)):
+    #     if(i<len(advantages)):
+    #         last_observations.append(transitions[i+1][0].observation)
+    #     else:
+    #         last_observations.append(last_observation)
+
+    # Train the actor and critic on each minibatch
+    def update_minibatch(train_state, batch_info):
+        actor_state, critic_state = train_state
+        transitions, advantages, targets = batch_info
+        actor_state, actor_info, actor_loss = update_actor(actor_state, transitions, advantages, hyperparams.actor_clip)
+        critic_state, critic_loss = update_critic(critic_state, transitions, targets)
+        return ((actor_state, critic_state), (actor_loss, actor_info, critic_loss))
+
+    # Run epochs over all the minibatches of transitions
+    actor_loss = 0
+    critic_loss = 0
+    for e in range(hyperparams.update_epochs):
+        train_state, losses = jax.lax.scan(
+            update_minibatch,
+            init=(actor_state, critic_state),
+            xs=(transitions, advantages, targets),
+        )
+        actor_state, critic_state = train_state
+        actor_losses, actor_info, critic_losses = losses
+        actor_loss += jnp.mean(actor_losses) / hyperparams.update_epochs
+        critic_loss += jnp.mean(critic_losses) / hyperparams.update_epochs
+
+    return (
+        actor_state,
+        critic_state,
+        (average_reward, actor_loss, actor_info, critic_loss),
+        rng_key,
+    )
 
 @functools.partial(jax.jit, static_argnums=0)
-def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla=False):
+def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams):
     """Trains the model for a batch of updates."""
     def run_once(batch_state, x):
         """Runs an update and carries over the train state."""
         actor_state, critic_state, rng_key = batch_state
         actor_state, critic_state, metrics, rng_key = \
-            run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla)
+            run_update(env, env_params, actor_state, critic_state, rng_key, hyperparams)
         return ((actor_state, critic_state, rng_key), metrics)
 
     batch_state, batch_metrics = jax.lax.scan(
@@ -245,23 +295,21 @@ def run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, 
     actor_state, critic_state, rng_key = batch_state
     return (actor_state, critic_state, batch_metrics, rng_key)
 
-def train(env_key, seed, logger, hyperparams, verbose=True, vanilla=False):
+def train(env_key, seed, logger, hyperparams, verbose = False, vanilla=False):
     # Create environment
     config = ENV_CONFIG[env_key]
-
-    print(hyperparams)
-
+    hyperparams = config["hyperparams"]
     rng_key, actor_key, critic_key = jax.random.split(jax.random.key(seed), 3)
-    env, env_params = gymnax.make(ENV_NAMES[env_key])
+    env, env_params = gymnax.make(GYM_ENV_NAMES[env_key])
     empty_observation = jnp.empty(env.observation_space(env_params).shape)
 
     # Initialize actor model
-    actor_model_params = models.params.init(env, env_params, config["actor_params"])
+    actor_model_params = models.params.init_gymnax(env, env_params, config["actor_params"])
     actor = config["actor_model"](*actor_model_params)
     actor_params = actor.init(actor_key, empty_observation)
 
     # Initialize critic model
-    critic_model_params = models.params.init(env, env_params, config["critic_params"])
+    critic_model_params = models.params.init_gymnax(env, env_params, config["critic_params"])
     critic = config["critic_model"](*critic_model_params)
     critic_params = critic.init(critic_key, empty_observation)
 
@@ -270,31 +318,40 @@ def train(env_key, seed, logger, hyperparams, verbose=True, vanilla=False):
         apply_fn=jax.jit(actor.apply),
         params=actor_params,
         tx=optax.adam(hyperparams.actor_learning_rate, eps=hyperparams.adam_eps),
-        # tx=optax.adam(0.003, eps=hyperparams.adam_eps),
-    )
+    )   
     critic_state = TrainState.create(
         apply_fn=jax.jit(critic.apply),
         params=critic_params,
         tx=optax.adam(hyperparams.critic_learning_rate, eps=hyperparams.adam_eps),
-        # tx=optax.adam(0.008, eps=hyperparams.adam_eps),
     )
 
-
+    # Set logger info
     logger.set_interval(hyperparams.rollout_len)
+    logger.set_info(
+        "reward",
+        f"[{GYM_ENV_NAMES[env_key]}] PPO average reward",
+        f"charts/ppo/{env_key}_reward.png",
+    )
+    logger.set_info(
+        "actor_loss",
+        f"[{GYM_ENV_NAMES[env_key]}] PPO actor loss",
+        f"charts/ppo/{env_key}_actor_loss.png",
+    )
+    logger.set_info(
+        "critic_loss",
+        f"[{GYM_ENV_NAMES[env_key]}] PPO critic loss",
+        f"charts/ppo/{env_key}_critic_loss.png",
+    )
 
     # Run the training loop
     num_batches = int(hyperparams.num_updates / hyperparams.batch_count)
     for b in range(num_batches):
         actor_state, critic_state, batch_metrics, rng_key = \
-            run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams, vanilla)
-        
+            run_batch(env, env_params, actor_state, critic_state, rng_key, hyperparams)
         logger.log_metrics({
             "reward": batch_metrics[0],
-            "actor_loss": batch_metrics[2],
-            "critic_loss": batch_metrics[3],
-            "hypergradient": batch_metrics[1][0],
-            "final_product": batch_metrics[1][1],
-            "cosine_similarities": batch_metrics[1][2]
+            "actor_loss": batch_metrics[1],
+            "critic_loss": batch_metrics[2],
         })
         if verbose:
-            print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {batch_metrics[0][-1]}, Hypergradient Norm {jnp.mean(batch_metrics[1][0])}, finalProduct Norm{jnp.mean(batch_metrics[1][1])}, cosine similarity {batch_metrics[1][2][-1]}")
+            print(f"[Update {(b + 1) * hyperparams.batch_count}]: Average reward {batch_metrics[0][-1]}")

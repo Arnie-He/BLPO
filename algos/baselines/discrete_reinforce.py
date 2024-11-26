@@ -1,5 +1,5 @@
-from environments import ENV_NAMES
-from models.discrete_actor import DiscreteActor
+from environments import GYM_ENV_NAMES
+from models.actor import DiscreteActor
 import models.params
 from models.params import DynParam
 
@@ -185,7 +185,7 @@ def train(env_key, seed, logger, verbose = False):
     config = ENV_CONFIG[env_key]
     hyperparams = config["hyperparams"]
     rng_key, init_key = jax.random.split(jax.random.key(seed), 2)
-    env, env_params = gymnax.make(ENV_NAMES[env_key])
+    env, env_params = gymnax.make(GYM_ENV_NAMES[env_key])
     empty_observation = jnp.empty(env.observation_space(env_params).shape)
 
     # Initialize actor model
@@ -204,12 +204,12 @@ def train(env_key, seed, logger, verbose = False):
     logger.set_interval(hyperparams.rollout_len)
     logger.set_info(
         "reward",
-        f"[{ENV_NAMES[env_key]}] REINFORCE average reward",
+        f"[{GYM_ENV_NAMES[env_key]}] REINFORCE average reward",
         f"charts/reinforce/{env_key}_reward.png",
     )
     logger.set_info(
         "actor_loss",
-        f"[{ENV_NAMES[env_key]}] REINFORCE actor loss",
+        f"[{GYM_ENV_NAMES[env_key]}] REINFORCE actor loss",
         f"charts/reinforce/{env_key}_actor_loss.png",
     )
 

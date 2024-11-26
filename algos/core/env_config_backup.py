@@ -1,10 +1,10 @@
 # config.py
 
-from models.discrete_actor import DiscreteActor, DiscretePixelActor
+from models.actor import DiscreteActor, DiscretePixelActor
 from models.critic import Critic, PixelCritic
 from models.params import DynParam
 import flax.linen as nn
-from algos.core.hyperparams import Hyperparams
+from algos.core.env_config import Hyperparams
 
 ENV_CONFIG = {
     "cartpole": {

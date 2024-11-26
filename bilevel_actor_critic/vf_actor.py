@@ -1,6 +1,6 @@
 from environments import ENV_NAMES
 from models.critic import Critic, PixelCritic
-from models.discrete_actor import DiscreteActor, DiscretePixelActor
+from models.actor import DiscreteActor, DiscretePixelActor
 import models.params
 from models.params import DynParam
 
