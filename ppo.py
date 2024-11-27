@@ -52,7 +52,7 @@ def make_train(config):
         critic_network = Critic(activation=config["ACTIVATION"])
         critic_params = critic_network.init(critic_rng, empty_observation)
         critic_state = TrainState.create(
-            apply_fn = actor_network.apply, 
+            apply_fn = critic_network.apply, 
             params = critic_params, 
             tx = optax.adam(learning_rate=linear_schedule, eps=1e-5),
         )
@@ -136,12 +136,11 @@ def make_train(config):
 
                 actor_state, critic_state, traj_batch, advantages, targets, rng = update_state
                 rng, _rng = jax.random.split(rng)
+
                 # Batching and Shuffling
-                batch_size = config["MINIBATCH_SIZE"] * config["NUM_MINIBATCHES"]
                 assert (
                     config["NUM_STEPS"] == config["MINIBATCH_SIZE"] and config["NUM_MINIBATCHES"] == config["NUM_ENVS"]
                 ), "Number of envs must match number of minibatches and minibatches' length must match rollout len!"
-
                 batch = (traj_batch, advantages, targets)
                 batch = jax.tree_util.tree_map(
                     lambda x: x.reshape((config["NUM_MINIBATCHES"], config["MINIBATCH_SIZE"]) + x.shape[2:]), batch
@@ -196,7 +195,7 @@ if __name__ == "__main__":
         "LR": 2.5e-4,
         "NUM_ENVS": 4,
         "NUM_STEPS": 128,
-        "TOTAL_TIMESTEPS": 5e5,
+        "TOTAL_TIMESTEPS": 1e7,
         "UPDATE_EPOCHS": 4,
         "NUM_MINIBATCHES": 4,
         "GAMMA": 0.99,
@@ -206,7 +205,7 @@ if __name__ == "__main__":
         "VF_COEF": 0.5,
         "MAX_GRAD_NORM": 0.5,
         "ACTIVATION": "tanh",
-        "ENV_NAME": "CartPole-v1",
+        "ENV_NAME": "SpaceInvaders-MinAtar",
         "ANNEAL_LR": True,
         "DEBUG": True,
     }
