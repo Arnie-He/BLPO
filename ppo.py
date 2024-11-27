@@ -11,6 +11,7 @@ import gymnax
 from wrappers import LogWrapper, FlattenObservationWrapper
 from core.model import DiscreteActor, Critic
 from core.utilities import initialize_config, calculate_gae, linear_schedule
+import logging 
 
 class Transition(NamedTuple):
     done: jnp.ndarray
@@ -173,7 +174,9 @@ def make_train(config):
                     return_values = info["returned_episode_returns"][info["returned_episode"]]
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
                     for t in range(len(timesteps)):
-                        print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
+                        log_message = f"global step={timesteps[t]}, episodic return={return_values[t]}"
+                        logging.info(log_message)
+                        print(log_message)
                 jax.debug.callback(callback, metric)
 
             runner_state = (actor_state, critic_state, env_state, last_obs, rng)
@@ -191,6 +194,7 @@ def make_train(config):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(filename='ppo.log', level=logging.INFO, format='%(message)s')
     config = {
         "LR": 2.5e-4,
         "NUM_ENVS": 4,
