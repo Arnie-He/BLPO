@@ -10,13 +10,13 @@ import distrax
 import gymnax
 from wrappers import LogWrapper, FlattenObservationWrapper
 from core.model import DiscreteActor, Critic
-from core.utilities import initialize_config, calculate_gae, linear_schedule
+from core.utilities import initialize_config, linear_schedule
 import logging 
+import os
 
 class Transition(NamedTuple):
     done: jnp.ndarray
     action: jnp.ndarray
-    value: jnp.ndarray
     reward: jnp.ndarray
     log_prob: jnp.ndarray
     obs: jnp.ndarray
@@ -72,7 +72,6 @@ def make_train(config):
 
                 # SELECT ACTION
                 pi = actor_network.apply(actor_state.params, last_obs)
-                value = critic_network.apply(critic_state.params, last_obs)
 
                 rng, actor_rng = jax.random.split(rng)
                 action = pi.sample(seed=actor_rng)
@@ -85,7 +84,7 @@ def make_train(config):
                     env.step, in_axes=(0, 0, 0, None)
                 )(rng_step, env_state, action, env_params)
                 transition = Transition(
-                    done, action, value, reward, log_prob, last_obs, info
+                    done, action, reward, log_prob, last_obs, info
                 )
                 runner_state = (actor_state, critic_state, env_state, obsv, rng)
                 return runner_state, transition
@@ -94,10 +93,34 @@ def make_train(config):
                 _env_step, runner_state, None, config["NUM_STEPS"]
             )
 
-            # CALCULATE ADVANTAGE
+            # CALCULATE ADVANTAGEs
+            def calculate_gae(critic_params, traj_batch, last_obs):
+                def _get_advantages(gae_and_next_value, transition):
+                    gae, next_value = gae_and_next_value
+                    value = critic_network.apply(critic_params, transition.obs)
+                    done, reward = (
+                        transition.done,
+                        transition.reward,
+                    )
+                    delta = reward + config["GAMMA"] * next_value * (1 - done) - value
+                    gae = (
+                        delta
+                        + config["GAMMA"] * config["GAE_LAMBDA"] * (1 - done) * gae
+                    )
+                    return (gae, value), gae
+                last_val = critic_network.apply(critic_params, last_obs)
+                _, advantages = jax.lax.scan(
+                    _get_advantages,
+                    (jnp.zeros_like(last_val), last_val),
+                    traj_batch,
+                    reverse=True,
+                    unroll=16,
+                )
+                values = critic_network.apply(critic_params, traj_batch.obs)
+                return advantages, advantages + values
+            
             actor_state, critic_state, env_state, last_obs, rng = runner_state
-            last_val = critic_network.apply(critic_state.params, last_obs)
-            advantages, targets = calculate_gae(traj_batch, last_val)
+            advantages, targets = calculate_gae(critic_state.params, traj_batch, last_obs)
 
             # UPDATE NETWORK
             def _update_epoch(update_state, unused):
@@ -107,7 +130,7 @@ def make_train(config):
                     
                     def actor_loss(params, transitions, advantages):
                         """Calculates the clipped advantage estimator on a batch of transitions."""
-                        action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(params, transitions.obs)
+                        action_dists = jax.vmap(actor_network.apply_fn, in_axes=(None, 0))(params, transitions.obs)
                         log_probs = action_dists.log_prob(transitions.action)
                         prob_ratios = jnp.exp(log_probs - transitions.log_prob)
 
@@ -120,9 +143,20 @@ def make_train(config):
                     
                     def critic_loss(params, transitions, targets):
                         """Calculates the mean squared error on a batch of transitions."""
-                        values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(params, transitions.obs)
+                        values = jax.vmap(critic_network.apply_fn, in_axes=(None, 0))(params, transitions.obs)
                         errors = jnp.square(targets - values)
                         return jnp.mean(errors)
+                    
+                    # def leader_f2_loss(actor_params, critic_params, transitions):
+                    #     action_dists = jax.vmap(actor_state.apply_fn, in_axes=(None, 0))(actor_params, transitions.observation)
+                    #     log_probs = action_dists.log_prob(transitions.action)
+                    #     advantages, _ = calc_values(critic_state, critic_params, transitions, last_observation, hyperparams.discount_rate, advantage_rate = hyperparams.advantage_rate)
+                    #     result = advantages[:-1] * (hyperparams.discount_rate * advantages[1:] * log_probs[1:] - advantages[:-1] * log_probs[:-1])
+
+                    #     result = 2 * jnp.mean(result) 
+                    #     # result = clip_grad_norm(result, optax.global_norm(grad_theta_J))
+
+                    #     return result 
                     
                     actor_loss, actor_grad = jax.value_and_grad(actor_loss)(actor_state.params, traj_batch, advantages)
                     critic_loss, critic_grad = jax.value_and_grad(critic_loss)(critic_state.params, traj_batch, targets)
@@ -135,14 +169,14 @@ def make_train(config):
                     return train_state, total_loss
                 
 
-                actor_state, critic_state, traj_batch, advantages, targets, rng = update_state
+                actor_state, critic_state, traj_batch, advantages, targets, last_obs, rng = update_state
                 rng, _rng = jax.random.split(rng)
 
                 # Batching and Shuffling
                 assert (
                     config["NUM_STEPS"] == config["MINIBATCH_SIZE"] and config["NUM_MINIBATCHES"] == config["NUM_ENVS"]
                 ), "Number of envs must match number of minibatches and minibatches' length must match rollout len!"
-                batch = (traj_batch, advantages, targets)
+                batch = (traj_batch, advantages, targets, last_obs)
                 batch = jax.tree_util.tree_map(
                     lambda x: x.reshape((config["NUM_MINIBATCHES"], config["MINIBATCH_SIZE"]) + x.shape[2:]), batch
                 )
@@ -159,7 +193,7 @@ def make_train(config):
                 return update_state, total_loss
             
             # Updating Training State and Metrics:
-            update_state = (actor_state, critic_state, traj_batch, advantages, targets, rng)
+            update_state = (actor_state, critic_state, traj_batch, advantages, targets, last_obs, rng)
             update_state, loss_info = jax.lax.scan(
                 _update_epoch, update_state, None, config["UPDATE_EPOCHS"]
             )
@@ -194,6 +228,7 @@ def make_train(config):
 
 
 if __name__ == "__main__":
+    os.environ["JAX_PLATFORM_NAME"] = "gpu"
     logging.basicConfig(filename='ppo.log', level=logging.INFO, format='%(message)s')
     config = {
         "LR": 2.5e-4,
