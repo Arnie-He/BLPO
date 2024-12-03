@@ -162,6 +162,13 @@ def make_train(config):
                     unroll=16,
                 )
                 return advantages, advantages + traj_batch.value
+            
+            _, traj_batch_values = jax.vmap(network.apply, in_axes=(None, 0))(train_state.params, traj_batch.obs)
+            
+            jax.debug.print("traj_batch.obs shape {}", traj_batch.obs.shape)
+            jax.debug.print("traj_batch.value shape {}", traj_batch_values.shape)
+            jax.debug.print("last obs shape {}", last_obs.shape)
+            jax.debug.print("obsv shape {}", obsv.shape)
 
             advantages, targets = _calculate_gae(traj_batch, last_val)
 

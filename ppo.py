@@ -13,6 +13,8 @@ from core.model import DiscreteActor, Critic
 from core.utilities import initialize_config, linear_schedule
 import logging 
 import os
+from tensorboardX import SummaryWriter
+import datetime
 
 class Transition(NamedTuple):
     done: jnp.ndarray
@@ -21,7 +23,7 @@ class Transition(NamedTuple):
     log_prob: jnp.ndarray
     obs: jnp.ndarray
     info: jnp.ndarray
-
+    
 def make_train(config):
 
     #### Prepare some hyperparameters ###
@@ -83,8 +85,9 @@ def make_train(config):
                 obsv, env_state, reward, done, info = jax.vmap(
                     env.step, in_axes=(0, 0, 0, None)
                 )(rng_step, env_state, action, env_params)
+                # temporarily hold the values field.
                 transition = Transition(
-                    done, action, reward, log_prob, last_obs, info
+                    done, action, reward, log_prob, last_obs,  info
                 )
                 runner_state = (actor_state, critic_state, env_state, obsv, rng)
                 return runner_state, transition
@@ -95,9 +98,13 @@ def make_train(config):
 
             # CALCULATE ADVANTAGEs
             def calculate_gae(critic_params, traj_batch, last_obs):
-                def _get_advantages(gae_and_next_value, transition):
+
+                traj_batch_values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, traj_batch.obs)
+                last_val = critic_network.apply(critic_params, last_obs)
+
+                def _get_advantages(gae_and_next_value, value_info):
                     gae, next_value = gae_and_next_value
-                    value = critic_network.apply(critic_params, transition.obs)
+                    transition, value = value_info
                     done, reward = (
                         transition.done,
                         transition.reward,
@@ -108,16 +115,15 @@ def make_train(config):
                         + config["GAMMA"] * config["GAE_LAMBDA"] * (1 - done) * gae
                     )
                     return (gae, value), gae
-                last_val = critic_network.apply(critic_params, last_obs)
+                
                 _, advantages = jax.lax.scan(
                     _get_advantages,
                     (jnp.zeros_like(last_val), last_val),
-                    traj_batch,
+                    (traj_batch, traj_batch_values),
                     reverse=True,
                     unroll=16,
                 )
-                values = critic_network.apply(critic_params, traj_batch.obs)
-                return advantages, advantages + values
+                return advantages, advantages + traj_batch_values
             
             actor_state, critic_state, env_state, last_obs, rng = runner_state
             advantages, targets = calculate_gae(critic_state.params, traj_batch, last_obs)
@@ -126,11 +132,11 @@ def make_train(config):
             def _update_epoch(update_state, unused):
                 def _update_minbatch(train_state, batch_info):
                     actor_state, critic_state = train_state 
-                    traj_batch, advantages, targets = batch_info
+                    traj_batch, advantages, targets, last_obs = batch_info
                     
                     def actor_loss(params, transitions, advantages):
                         """Calculates the clipped advantage estimator on a batch of transitions."""
-                        action_dists = jax.vmap(actor_network.apply_fn, in_axes=(None, 0))(params, transitions.obs)
+                        action_dists = jax.vmap(actor_network.apply, in_axes=(None, 0))(params, transitions.obs)
                         log_probs = action_dists.log_prob(transitions.action)
                         prob_ratios = jnp.exp(log_probs - transitions.log_prob)
 
@@ -143,7 +149,7 @@ def make_train(config):
                     
                     def critic_loss(params, transitions, targets):
                         """Calculates the mean squared error on a batch of transitions."""
-                        values = jax.vmap(critic_network.apply_fn, in_axes=(None, 0))(params, transitions.obs)
+                        values = jax.vmap(critic_network.apply, in_axes=(None, 0))(params, transitions.obs)
                         errors = jnp.square(targets - values)
                         return jnp.mean(errors)
                     
@@ -169,17 +175,18 @@ def make_train(config):
                     return train_state, total_loss
                 
 
-                actor_state, critic_state, traj_batch, advantages, targets, last_obs, rng = update_state
+                actor_state, critic_state, traj_batch, advantages, targets, rng = update_state
                 rng, _rng = jax.random.split(rng)
 
                 # Batching and Shuffling
                 assert (
                     config["NUM_STEPS"] == config["MINIBATCH_SIZE"] and config["NUM_MINIBATCHES"] == config["NUM_ENVS"]
                 ), "Number of envs must match number of minibatches and minibatches' length must match rollout len!"
-                batch = (traj_batch, advantages, targets, last_obs)
+                batch = (traj_batch, advantages, targets)
                 batch = jax.tree_util.tree_map(
                     lambda x: x.reshape((config["NUM_MINIBATCHES"], config["MINIBATCH_SIZE"]) + x.shape[2:]), batch
                 )
+                batch = (*batch, last_obs)
                 permutation = jax.random.permutation(_rng, config["NUM_MINIBATCHES"])
                 minibatches = jax.tree_util.tree_map(
                     lambda x: jnp.take(x, permutation, axis=0), batch
@@ -193,7 +200,7 @@ def make_train(config):
                 return update_state, total_loss
             
             # Updating Training State and Metrics:
-            update_state = (actor_state, critic_state, traj_batch, advantages, targets, last_obs, rng)
+            update_state = (actor_state, critic_state, traj_batch, advantages, targets, rng)
             update_state, loss_info = jax.lax.scan(
                 _update_epoch, update_state, None, config["UPDATE_EPOCHS"]
             )
@@ -232,11 +239,11 @@ if __name__ == "__main__":
     logging.basicConfig(filename='ppo.log', level=logging.INFO, format='%(message)s')
     config = {
         "LR": 2.5e-4,
-        "NUM_ENVS": 4,
+        "NUM_ENVS": 32,
         "NUM_STEPS": 128,
         "TOTAL_TIMESTEPS": 1e7,
         "UPDATE_EPOCHS": 4,
-        "NUM_MINIBATCHES": 4,
+        "NUM_MINIBATCHES": 32,
         "GAMMA": 0.99,
         "GAE_LAMBDA": 0.95,
         "CLIP_EPS": 0.2,
