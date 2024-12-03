@@ -187,6 +187,7 @@ def make_train(config, vanilla):
                         _, unflatten_fn = jax.flatten_util.ravel_pytree(critic_state.params)
                         """Time-efficient Nystrom"""
                         def nystrom_hvp(rank, rho):
+                            # this line is wrong!
                             in_out_g = jax.grad(leader_f2_loss, argnums=1)(actor_state.params, critic_p, traj_batch)
                             param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
                             indices = jax.random.permutation(jax.random.PRNGKey(0), param_size)[:rank]
