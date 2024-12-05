@@ -1,5 +1,7 @@
 import jax
 import jax.numpy as jnp
+import os
+import datetime
 
 config = None
 
@@ -37,3 +39,24 @@ def cosine_similarity(grad1, grad2):
     cos_sim = jnp.where((x_norm == 0) | (y_norm == 0), 0.0,
                         jnp.dot(grads1_concat, grads2_concat) / (x_norm * y_norm))
     return cos_sim
+
+import os
+
+def logdir(config):
+    if config.get("vanilla", True):
+        algo_dir = (
+            f"VanillaNested_nested_updates={config['nested_updates']}_"
+            f"criticLR={config['critic-LR']}"
+        )
+    elif "nystrom_rank" in config:
+        algo_dir = (
+            f"HypergradNystrom_nested_updates={config['nested_updates']}_"
+            f"nystromrank={config['nystrom_rank']}_"
+            f"nystromrho={config['nystrom_rho']}_"
+            f"ihvpbound={config['IHVP_BOUND']}"
+        )
+    else:
+        algo_dir = "ppo"
+
+    log_dir = os.path.join("runs", config["ENV_NAME"], algo_dir)
+    return log_dir
