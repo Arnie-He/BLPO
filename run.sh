@@ -3,6 +3,6 @@
 # run.sh
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
-python main.py --task=cartpole 
-python main.py --task=cartpole --vanilla=True
-python main.py --task=cartpole --algo=ppo
+python main.py 
+python main.py --vanilla=True
+python main.py --algo=ppo

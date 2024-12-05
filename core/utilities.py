@@ -43,7 +43,7 @@ def cosine_similarity(grad1, grad2):
 import os
 
 def logdir(config):
-    if config.get("vanilla", True):
+    if config.get("vanilla", False):
         algo_dir = (
             f"VanillaNested_nested_updates={config['nested_updates']}_"
             f"criticLR={config['critic-LR']}"
