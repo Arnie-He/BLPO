@@ -175,7 +175,6 @@ def make_train(config):
                     train_state = (actor_state, critic_state)
                     return train_state, total_loss
                 
-
                 actor_state, critic_state, traj_batch, advantages, targets, rng = update_state
                 rng, _rng = jax.random.split(rng)
 

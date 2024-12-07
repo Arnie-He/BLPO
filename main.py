@@ -18,6 +18,10 @@ def main():
     parser.add_argument("--vanilla", type=bool, default = False)
     parser.add_argument("--seed", type=int, default=30)
     parser.add_argument("--algo", type=str, default="nystrom")
+    parser.add_argument("--rank", type=int, default=10)
+    parser.add_argument("--rho", type=int, default=50)
+    parser.add_argument("--nested", type=int, default=10)
+    parser.add_argument("--ihvp_bound", type=float, default=1.0)
     args = parser.parse_args()
 
     if args.cpu:
@@ -45,10 +49,10 @@ def main():
     nystrom_config = shared_config | { 
         "actor-LR": 2.5e-4,
         "critic-LR" : 1e-3, 
-        "nystrom_rank": 10,
-        "nystrom_rho": 50,
-        "nested_updates": 10,
-        "IHVP_BOUND": 0.2,
+        "nystrom_rank": args.rank,
+        "nystrom_rho": args.rho,
+        "nested_updates": args.nested,
+        "IHVP_BOUND": args.ihvp_bound,
         "vanilla": args.vanilla,
     }
 

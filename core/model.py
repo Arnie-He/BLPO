@@ -8,6 +8,7 @@ from typing import Sequence, NamedTuple, Any
 
 class ActorCritic(nn.Module):
     action_dim: Sequence[int]
+    network_size: Sequence[int] = (64, 64)
     activation: str = "tanh"
 
     @nn.compact
