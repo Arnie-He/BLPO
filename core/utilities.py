@@ -57,6 +57,7 @@ def logdir(config):
         )
     else:
         algo_dir = "ppo"
+    algo_dir = f"Epoch{config['UPDATE_EPOCHS']}_" + algo_dir
 
     log_dir = os.path.join("runs", config["ENV_NAME"], algo_dir)
     return log_dir

@@ -75,7 +75,7 @@ def make_train(config):
             params = critic_params, 
             tx = optax.adam(learning_rate=config["critic-LR"], eps=1e-5),
         )
-
+        
         ### Parraleled Environments ###
         rng, _rng = jax.random.split(rng)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
@@ -244,7 +244,7 @@ if __name__ == "__main__":
     config = {
         "NUM_ENVS": 2048,
         "NUM_STEPS": 10,
-        "TOTAL_TIMESTEPS": 5e7,
+        "TOTAL_TIMESTEPS": 2e5,
         "UPDATE_EPOCHS": 4,
         "NUM_MINIBATCHES": 32,
         "GAMMA": 0.99,

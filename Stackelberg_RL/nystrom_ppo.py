@@ -196,7 +196,7 @@ def make_train(config):
                         """Time-efficient Nystrom"""
                         def nystrom_hvp(rank, rho):
                             # this line is wrong!
-                            in_out_g = jax.grad(ppo_loss, argnums=1)(actor_state.params, critic_state.params, traj_batch)
+                            in_out_g = jax.grad(ppo_loss, argnums=1)(actor_state.params, critic_p, traj_batch)
                             param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
                             indices = jax.random.permutation(jax.random.PRNGKey(0), param_size)[:rank]
                             def select_grad_row(in_params, indices):
@@ -210,10 +210,10 @@ def make_train(config):
                             v_flat, _ = jax.flatten_util.ravel_pytree(in_out_g)
                             x = (1 / (rho )) * v_flat - (1 / ((rho ) ** 2)) * C.T @ jax.scipy.linalg.solve(M + (1 / rho) * C @ C.T +  jnp.eye(M.shape[0]), C @ v_flat)
                             return x
-                        """Space-efficient Nystrom"""
-                        def nystrom_se(rnak, rho):
-                            out_in_g = jax.grad(critic_target_loss, argnums=1)(actor_state.params, critic_state.params, traj_batch)
-                            param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
+                        # """Space-efficient Nystrom"""
+                        # def nystrom_se(rnak, rho):
+                        #     out_in_g = jax.grad(critic_target_loss, argnums=1)(actor_state.params, critic_state.params, traj_batch)
+                        #     param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
                                                    
                         # compute the ihvp using nystrom
                         inverse_hvp_flat = nystrom_hvp(config["nystrom_rank"], config["nystrom_rho"])
@@ -222,7 +222,7 @@ def make_train(config):
                             return jax.grad(leader_f2_loss)(policy_params, critic_params, traj_batch)
                         _, final_product = jax.jvp(
                             lambda p: mixed_grad_fn(actor_state.params, p),
-                            (critic_state.params,),
+                            (critic_p,),
                             (inverse_hvp,)
                         )
                         # bound the final_product

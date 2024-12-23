@@ -25,7 +25,7 @@ class Transition(NamedTuple):
     obs: jnp.ndarray
     info: jnp.ndarray
     
-def make_train(config, vanilla):
+def make_train(config):
 
     #### Prepare some hyperparameters ###
     config["NUM_UPDATES"] = (
@@ -185,7 +185,7 @@ def make_train(config, vanilla):
                         result = advantages[:-1] * (config["GAMMA"] * advantages[1:] * log_probs[1:] - advantages[:-1] * log_probs[:-1])
                         clipped_result = advantages[:-1] * (config["GAMMA"] * advantages[1:] * clipped_ratios[1:] - advantages[:-1] * clipped_ratios[:-1])
                         f2_loss = jnp.minimum(result, clipped_result)
-                        return 2 * jnp.mean(f2_loss) 
+                        return 2 * jnp.mean(f2_loss)
 
                     ### update actor for config["nested_updates"] times ###
                     actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_p, traj_batch)
@@ -198,7 +198,7 @@ def make_train(config, vanilla):
                             return jax.flatten_util.ravel_pytree(
                                 jax.grad(critic_target_loss, argnums=0)(unravel_fn(p), traj_batch, targets)
                             )[0]
-                        lambda_reg = 1.0
+                        lambda_reg = 0.0
                         hvp = jax.jvp(loss_grad_flat, (critic_params_flat,), (v,))[1] + lambda_reg * v
                         return hvp
                     
@@ -230,10 +230,10 @@ def make_train(config, vanilla):
                     final_product_norm = optax.global_norm(final_product)
                     max_norm = config["IHVP_BOUND"] * grad_theta_J_norm
                     scaling_factor = jnp.minimum(1.0, max_norm/(final_product_norm + 1e-8))
-                    clipped_final_product = jax.tree_util.tree_map( lambda fp: fp * scaling_factor, final_product)
+                    clipped_final_product = jax.tree_util.tree_map(lambda fp: fp * scaling_factor, final_product)
 
-                    hypergradient = jax.tree_util.tree_map(lambda x, y: x -y, grad_theta_J, clipped_final_product)
-                    hypergradient = jax.lax.cond(vanilla, lambda: grad_theta_J, lambda: hypergradient)
+                    hypergradient = jax.tree_util.tree_map(lambda x, y: x - y, grad_theta_J, clipped_final_product)
+                    hypergradient = jax.lax.cond(config["vanilla"], lambda: grad_theta_J, lambda: hypergradient)
                     actor_state = actor_state.apply_gradients(grads=hypergradient)
 
                     ### Update the critic state for several epoch ###
@@ -343,10 +343,10 @@ if __name__ == "__main__":
         "nystrom_rank": 10,
         "nystrom_rho": 50,
         "nested_updates": 10,
-        "IHVP_BOUND": 0.1
+        "IHVP_BOUND": 0.1,
+        "vanilla": False,
     }
-    vanilla = True
 
     rng = jax.random.PRNGKey(30)
-    train_jit = jax.jit(make_train(config, vanilla))
+    train_jit = jax.jit(make_train(config))
     out = train_jit(rng)
