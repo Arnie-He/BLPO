@@ -217,18 +217,22 @@ def make_train(config):
             critic_state = update_state[1]
             metric = traj_batch.info
             rng = update_state[-1]
+
+            # def callback(info):
+            #     return_values = info["returned_episode_returns"][info["returned_episode"]]
+            #     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
+            #     for t in range(len(timesteps)):
+            #         writer.add_scalar("episodic_return", return_values[t], timesteps[t])
+            # callback(metric)
             
             # Debugging mode
             if config.get("DEBUG"):
                 def callback(info):
                     return_values = info["returned_episode_returns"][info["returned_episode"]]
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
-                    print(timesteps)
                     for t in range(len(timesteps)):
-                        log_message = f"global step={timesteps[t]}, episodic return={return_values[t]}"
-                        print(log_message)
+                        print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                         writer.add_scalar("episodic_return", return_values[t], timesteps[t])
-                        
                 jax.debug.callback(callback, metric)
 
 
@@ -249,6 +253,7 @@ def make_train(config):
         
         return {"runner_state": runner_state, "metrics": metric}
 
+    writer.close()
     return train
 
 
@@ -280,5 +285,6 @@ if __name__ == "__main__":
         "FLUSH_EVERY": 10,
     }
     rng = jax.random.PRNGKey(30)
-    train_jit = jax.jit(make_train(config))
+    # train_jit = jax.jit(make_train(config))
+    train_jit = make_train(config)
     out = train_jit(rng)
