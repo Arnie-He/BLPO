@@ -233,7 +233,7 @@ def make_train(config):
 
 
             flush_counter += 1
-            if flush_counter % 10 == 0: # Flush every N timesteps
+            if flush_counter % config["FLUSH_EVERY"] == 0: # Flush every N timesteps
                 writer.flush()
                 flush_counter = 0
 
@@ -276,6 +276,8 @@ if __name__ == "__main__":
         "critic-LR": 1e-3,
         "vanilla": True,
         "nested_updates": 5,
+
+        "FLUSH_EVERY": 10,
     }
     rng = jax.random.PRNGKey(30)
     train_jit = jax.jit(make_train(config))
