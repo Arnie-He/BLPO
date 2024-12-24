@@ -83,7 +83,11 @@ def make_train(config):
         
         ################################ Start Training ##########################
         # TRAIN LOOP
+        flush_counter = 0
+
         def _update_step(runner_state, unused):
+            nonlocal flush_counter # Allow modification of the outer counter
+
             # COLLECT TRAJECTORIES
             def _env_step(runner_state, unused):
                 actor_state, critic_state, env_state, last_obs, rng = runner_state
@@ -219,11 +223,20 @@ def make_train(config):
                 def callback(info):
                     return_values = info["returned_episode_returns"][info["returned_episode"]]
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
+                    print(timesteps)
                     for t in range(len(timesteps)):
                         log_message = f"global step={timesteps[t]}, episodic return={return_values[t]}"
                         print(log_message)
                         writer.add_scalar("episodic_return", return_values[t], timesteps[t])
+                        
                 jax.debug.callback(callback, metric)
+
+
+            flush_counter += 1
+            if flush_counter % 10 == 0: # Flush every N timesteps
+                writer.flush()
+                flush_counter = 0
+
 
             runner_state = (actor_state, critic_state, env_state, last_obs, rng)
             return runner_state, metric
@@ -244,7 +257,7 @@ if __name__ == "__main__":
     config = {
         "NUM_ENVS": 2048,
         "NUM_STEPS": 10,
-        "TOTAL_TIMESTEPS": 2e5,
+        "TOTAL_TIMESTEPS": 2e7,
         "UPDATE_EPOCHS": 4,
         "NUM_MINIBATCHES": 32,
         "GAMMA": 0.99,
