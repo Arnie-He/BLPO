@@ -1,0 +1,65 @@
+_wandb:
+    value:
+        cli_version: 0.18.7
+        m: []
+        python_version: 3.11.9
+        t:
+            "1":
+                - 12
+                - 45
+                - 55
+            "2":
+                - 12
+                - 45
+                - 55
+            "3":
+                - 16
+                - 23
+                - 55
+                - 61
+            "4": 3.11.9
+            "5": 0.18.7
+            "8":
+                - 5
+            "12": 0.18.7
+            "13": linux-x86_64
+ACTIVATION:
+    value: tanh
+ANNEAL_LR:
+    value: false
+CLIP_EPS:
+    value: 0.2
+DEBUG:
+    value: true
+ENT_COEF:
+    value: 0.01
+ENV_NAME:
+    value: hopper
+FLUSH_EVERY:
+    value: 10
+GAE_LAMBDA:
+    value: 0.95
+GAMMA:
+    value: 0.99
+LR:
+    value: 0.0003
+MAX_GRAD_NORM:
+    value: 0.5
+MINIBATCH_SIZE:
+    value: 640
+NORMALIZE_ENV:
+    value: true
+NUM_ENVS:
+    value: 2048
+NUM_MINIBATCHES:
+    value: 32
+NUM_STEPS:
+    value: 10
+NUM_UPDATES:
+    value: 2441
+TOTAL_TIMESTEPS:
+    value: 5e+07
+UPDATE_EPOCHS:
+    value: 4
+VF_COEF:
+    value: 0.5

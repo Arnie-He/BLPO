@@ -11,11 +11,10 @@ import gymnax
 from core.wrappers import LogWrapper, FlattenObservationWrapper
 from core.model import DiscreteActor, Critic
 from core.utilities import initialize_config, linear_schedule, cosine_similarity
-import logging 
 import os
 from tensorboardX import SummaryWriter
 import datetime
-import copy
+import wandb
 
 class Transition(NamedTuple):
     done: jnp.ndarray
@@ -36,10 +35,8 @@ def make_train(config):
     )
     initialize_config(cfg=config)
 
-    ### TensorBoard Setup ###
-    log_dir = os.path.join("runs", config["ENV_NAME"], datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
-    writer = SummaryWriter(log_dir)
-    print(f"Logging to TensorBoard at: {log_dir}")
+    ### Weight and Bias Setup ###
+    wandb.init(project="HyperGradient-RL", config = config)
 
     ###Initialize Environment ###
     env, env_params = gymnax.make(config["ENV_NAME"])
@@ -177,15 +174,18 @@ def make_train(config):
                         return jnp.mean(errors)
                     
                     def leader_f2_loss(actor_params, critic_params, transitions):
+                        advantages, _ = calculate_gae(critic_params, traj_batch, last_obs)
+
                         action_dists = jax.vmap(actor_network.apply, in_axes=(None, 0))(actor_params, transitions.obs)
                         log_probs = action_dists.log_prob(transitions.action)
                         prob_ratios = jnp.exp(log_probs - transitions.log_prob)
+
+                        advantage_losses = prob_ratios * advantages
                         clipped_ratios = jnp.clip(prob_ratios, 1 - config["CLIP_EPS"], 1 + config["CLIP_EPS"])
-                        advantages, _ = calculate_gae(critic_params, transitions, last_obs=last_obs)
-                        result = advantages[:-1] * (config["GAMMA"] * advantages[1:] * log_probs[1:] - advantages[:-1] * log_probs[:-1])
-                        clipped_result = advantages[:-1] * (config["GAMMA"] * advantages[1:] * clipped_ratios[1:] - advantages[:-1] * clipped_ratios[:-1])
-                        f2_loss = jnp.minimum(result, clipped_result)
-                        return 2 * jnp.mean(f2_loss)
+                        clipped_losses = clipped_ratios * advantages
+
+                        ppo_losses = jnp.minimum(advantage_losses, clipped_losses)
+                        return 2 * -jnp.mean(ppo_losses)
 
                     ### update actor for config["nested_updates"] times ###
                     actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_p, traj_batch)
@@ -300,7 +300,7 @@ def make_train(config):
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
                     for t in range(len(timesteps)):
                         print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
-                        writer.add_scalar("episodic_return", return_values[t], timesteps[t])
+                        wandb.log({"Reward": return_values[t]}, step=timesteps[t])
                 jax.debug.callback(callback, metric)
 
             runner_state = (actor_state, critic_state, env_state, last_obs, rng)
@@ -314,7 +314,6 @@ def make_train(config):
         
         return {"runner_state": runner_state, "metrics": metric}
 
-    writer.close()
     return train
 
 

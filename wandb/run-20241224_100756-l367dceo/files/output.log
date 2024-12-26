@@ -1,0 +1,53 @@
+Traceback (most recent call last):
+  File "/home/arnie/Documents/HyperGradient-RL/Stackelberg_RL/continuous_stppo.py", line 281, in <module>
+    out = train_jit(rng)
+          ^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/traceback_util.py", line 180, in reraise_with_filtered_traceback
+    return fun(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/pjit.py", line 332, in cache_miss
+    outs, out_flat, out_tree, args_flat, jaxpr, attrs_tracked = _python_pjit_helper(
+                                                                ^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/pjit.py", line 190, in _python_pjit_helper
+    out_flat = pjit_p.bind(*args_flat, **p.params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/core.py", line 2782, in bind
+    return self.bind_with_trace(top_trace, args, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/core.py", line 443, in bind_with_trace
+    out = trace.process_primitive(self, map(trace.full_raise, args), params)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/core.py", line 949, in process_primitive
+    return primitive.impl(*tracers, **params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/pjit.py", line 1739, in _pjit_call_impl
+    return xc._xla.pjit(
+           ^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/pjit.py", line 1721, in call_impl_cache_miss
+    out_flat, compiled = _pjit_call_impl_python(
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/pjit.py", line 1651, in _pjit_call_impl_python
+    ).compile(compile_options)
+      ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/interpreters/pxla.py", line 2313, in compile
+    executable = UnloadedMeshExecutable.from_hlo(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/interpreters/pxla.py", line 2827, in from_hlo
+    xla_executable = _cached_compilation(
+                     ^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/interpreters/pxla.py", line 2639, in _cached_compilation
+    xla_executable = compiler.compile_or_get_cached(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/compiler.py", line 426, in compile_or_get_cached
+    return _compile_and_write_cache(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/compiler.py", line 654, in _compile_and_write_cache
+    executable = backend_compile(
+                 ^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/profiler.py", line 333, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/compiler.py", line 260, in backend_compile
+    return backend.compile(
+           ^^^^^^^^^^^^^^^^
+KeyboardInterrupt

@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "/home/arnie/Documents/HyperGradient-RL/Stackelberg_RL/continuous_Hypergrad_ppo.py", line 378, in <module>
+    out = train_jit(rng)
+          ^^^^^^^^^^^^^^
+  File "/home/arnie/Documents/HyperGradient-RL/Stackelberg_RL/continuous_Hypergrad_ppo.py", line 340, in train
+    runner_state, metric = jax.lax.scan(
+                           ^^^^^^^^^^^^^
+  File "/home/arnie/Documents/HyperGradient-RL/Stackelberg_RL/continuous_Hypergrad_ppo.py", line 317, in _update_step
+    update_state, loss_info = jax.lax.scan(
+                              ^^^^^^^^^^^^^
+  File "/home/arnie/Documents/HyperGradient-RL/Stackelberg_RL/continuous_Hypergrad_ppo.py", line 290, in _update_epoch
+    config["NUM_STEPS"] == config["MINIBATCH_SIZE"] and config["NUM_MINIBATCHES"] == config["NUM_ENVS"]
+AssertionError: Number of envs must match number of minibatches and minibatches' length must match rollout len!
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.

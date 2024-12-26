@@ -1,0 +1,16 @@
+{"time":"2024-12-26T12:29:18.733013525-05:00","level":"INFO","msg":"using version","core version":"0.18.7"}
+{"time":"2024-12-26T12:29:18.733022254-05:00","level":"INFO","msg":"created symlink","path":"/home/arnie/Documents/HyperGradient-RL/wandb/run-20241226_122918-qlkkdeil/logs/debug-core.log"}
+{"time":"2024-12-26T12:29:18.835996905-05:00","level":"INFO","msg":"created new stream","id":"qlkkdeil"}
+{"time":"2024-12-26T12:29:18.836010586-05:00","level":"INFO","msg":"stream: started","id":"qlkkdeil"}
+{"time":"2024-12-26T12:29:18.836079775-05:00","level":"INFO","msg":"sender: started","stream_id":"qlkkdeil"}
+{"time":"2024-12-26T12:29:18.836081667-05:00","level":"INFO","msg":"writer: Do: started","stream_id":"qlkkdeil"}
+{"time":"2024-12-26T12:29:18.836085795-05:00","level":"INFO","msg":"handler: started","stream_id":"qlkkdeil"}
+{"time":"2024-12-26T12:29:19.092329806-05:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-12-26T12:29:23.652820523-05:00","level":"INFO","msg":"stream: closing","id":"qlkkdeil"}
+{"time":"2024-12-26T12:29:23.652839292-05:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2024-12-26T12:29:23.653251736-05:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2024-12-26T12:29:24.035924528-05:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2024-12-26T12:29:24.17940394-05:00","level":"INFO","msg":"handler: closed","stream_id":"qlkkdeil"}
+{"time":"2024-12-26T12:29:24.179418132-05:00","level":"INFO","msg":"writer: Close: closed","stream_id":"qlkkdeil"}
+{"time":"2024-12-26T12:29:24.179442686-05:00","level":"INFO","msg":"sender: closed","stream_id":"qlkkdeil"}
+{"time":"2024-12-26T12:29:24.179444903-05:00","level":"INFO","msg":"stream: closed","id":"qlkkdeil"}

@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "/home/arnie/Documents/HyperGradient-RL/Baselines/continuous_ppo.py", line 267, in <module>
+    out = train_jit(rng)
+          ^^^^^^^^^^^^^^
+  File "/home/arnie/Documents/HyperGradient-RL/Baselines/continuous_ppo.py", line 233, in train
+    runner_state, metric = jax.lax.scan(
+                           ^^^^^^^^^^^^^
+  File "/home/arnie/Documents/HyperGradient-RL/Baselines/continuous_ppo.py", line 209, in _update_step
+    update_state, loss_info = jax.lax.scan(
+                              ^^^^^^^^^^^^^
+  File "/home/arnie/Documents/HyperGradient-RL/Baselines/continuous_ppo.py", line 183, in _update_epoch
+    batch_size == config["NUM_STEPS"] * config["NUM_ENVS"]
+AssertionError: batch size must be equal to number of steps * number of envs
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.

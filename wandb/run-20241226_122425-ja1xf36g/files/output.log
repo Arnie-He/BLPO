@@ -1,0 +1,68 @@
+Traceback (most recent call last):
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/lax/lax.py", line 154, in broadcast_shapes
+    return _broadcast_shapes_cached(*shapes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/util.py", line 302, in wrapper
+    return cached(config.trace_context() if trace_context_in_key else _ignore(),
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/util.py", line 296, in cached
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/lax/lax.py", line 160, in _broadcast_shapes_cached
+    return _broadcast_shapes_uncached(*shapes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/lax/lax.py", line 176, in _broadcast_shapes_uncached
+    raise ValueError(f"Incompatible shapes for broadcasting: shapes={list(shapes)}")
+ValueError: Incompatible shapes for broadcasting: shapes=[(640, 3), (640,)]
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/arnie/Documents/HyperGradient-RL/Stackelberg_RL/continuous_Hypergrad_ppo.py", line 378, in <module>
+    out = train_jit(rng)
+          ^^^^^^^^^^^^^^
+  File "/home/arnie/Documents/HyperGradient-RL/Stackelberg_RL/continuous_Hypergrad_ppo.py", line 340, in train
+    runner_state, metric = jax.lax.scan(
+                           ^^^^^^^^^^^^^
+  File "/home/arnie/Documents/HyperGradient-RL/Stackelberg_RL/continuous_Hypergrad_ppo.py", line 317, in _update_step
+    update_state, loss_info = jax.lax.scan(
+                              ^^^^^^^^^^^^^
+  File "/home/arnie/Documents/HyperGradient-RL/Stackelberg_RL/continuous_Hypergrad_ppo.py", line 308, in _update_epoch
+    train_state, total_loss = jax.lax.scan(
+                              ^^^^^^^^^^^^^
+  File "/home/arnie/Documents/HyperGradient-RL/Stackelberg_RL/continuous_Hypergrad_ppo.py", line 211, in _update_minbatch
+    actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_p, traj_batch)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/Documents/HyperGradient-RL/Stackelberg_RL/continuous_Hypergrad_ppo.py", line 171, in ppo_loss
+    log_probs = action_dists.log_prob(transitions.action)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/distrax/_src/distributions/transformed.py", line 164, in log_prob
+    lp_x = self.distribution.log_prob(x)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/distrax/_src/distributions/independent.py", line 111, in log_prob
+    return self._reduce(jnp.sum, self._distribution.log_prob(value))
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/distrax/_src/distributions/normal.py", line 94, in log_prob
+    log_unnormalized = -0.5 * jnp.square(self._standardize(value))
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/distrax/_src/distributions/normal.py", line 115, in _standardize
+    return (value - self._loc) / self._scale
+           ~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/numpy/array_methods.py", line 1036, in op
+    return getattr(self.aval, f"_{name}")(self, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/numpy/array_methods.py", line 573, in deferring_binary_op
+    return binary_op(*args)
+           ^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/numpy/ufuncs.py", line 1309, in true_divide
+    x1, x2 = promote_args_inexact("true_divide", x1, x2)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/numpy/util.py", line 385, in promote_args_inexact
+    return promote_shapes(fun_name, *promote_dtypes_inexact(*args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/arnie/miniconda3/envs/jax-general/lib/python3.11/site-packages/jax/_src/numpy/util.py", line 238, in promote_shapes
+    result_rank = len(lax.broadcast_shapes(*shapes))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: Incompatible shapes for broadcasting: shapes=[(640, 3), (640,)]
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.

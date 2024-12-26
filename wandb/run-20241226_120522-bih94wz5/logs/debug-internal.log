@@ -1,0 +1,8 @@
+{"time":"2024-12-26T12:05:22.812631495-05:00","level":"INFO","msg":"using version","core version":"0.18.7"}
+{"time":"2024-12-26T12:05:22.812643201-05:00","level":"INFO","msg":"created symlink","path":"/home/arnie/Documents/HyperGradient-RL/wandb/run-20241226_120522-bih94wz5/logs/debug-core.log"}
+{"time":"2024-12-26T12:05:22.915411948-05:00","level":"INFO","msg":"created new stream","id":"bih94wz5"}
+{"time":"2024-12-26T12:05:22.915423886-05:00","level":"INFO","msg":"stream: started","id":"bih94wz5"}
+{"time":"2024-12-26T12:05:22.915467983-05:00","level":"INFO","msg":"handler: started","stream_id":"bih94wz5"}
+{"time":"2024-12-26T12:05:22.915470182-05:00","level":"INFO","msg":"writer: Do: started","stream_id":"bih94wz5"}
+{"time":"2024-12-26T12:05:22.915486767-05:00","level":"INFO","msg":"sender: started","stream_id":"bih94wz5"}
+{"time":"2024-12-26T12:05:23.084278791-05:00","level":"INFO","msg":"Starting system monitor"}

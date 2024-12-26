@@ -1,0 +1,8 @@
+{"time":"2024-12-26T13:35:48.590234838-05:00","level":"INFO","msg":"using version","core version":"0.18.7"}
+{"time":"2024-12-26T13:35:48.590243923-05:00","level":"INFO","msg":"created symlink","path":"/home/arnie/Documents/HyperGradient-RL/wandb/run-20241226_133548-0xsv4u3m/logs/debug-core.log"}
+{"time":"2024-12-26T13:35:48.692640082-05:00","level":"INFO","msg":"created new stream","id":"0xsv4u3m"}
+{"time":"2024-12-26T13:35:48.692653633-05:00","level":"INFO","msg":"stream: started","id":"0xsv4u3m"}
+{"time":"2024-12-26T13:35:48.692695448-05:00","level":"INFO","msg":"writer: Do: started","stream_id":"0xsv4u3m"}
+{"time":"2024-12-26T13:35:48.692704896-05:00","level":"INFO","msg":"handler: started","stream_id":"0xsv4u3m"}
+{"time":"2024-12-26T13:35:48.692753714-05:00","level":"INFO","msg":"sender: started","stream_id":"0xsv4u3m"}
+{"time":"2024-12-26T13:35:48.861395709-05:00","level":"INFO","msg":"Starting system monitor"}

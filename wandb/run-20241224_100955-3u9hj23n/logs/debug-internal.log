@@ -1,0 +1,16 @@
+{"time":"2024-12-24T10:09:55.616719234-05:00","level":"INFO","msg":"using version","core version":"0.18.7"}
+{"time":"2024-12-24T10:09:55.616730941-05:00","level":"INFO","msg":"created symlink","path":"/home/arnie/Documents/HyperGradient-RL/wandb/run-20241224_100955-3u9hj23n/logs/debug-core.log"}
+{"time":"2024-12-24T10:09:55.719310761-05:00","level":"INFO","msg":"created new stream","id":"3u9hj23n"}
+{"time":"2024-12-24T10:09:55.719337622-05:00","level":"INFO","msg":"stream: started","id":"3u9hj23n"}
+{"time":"2024-12-24T10:09:55.719377214-05:00","level":"INFO","msg":"sender: started","stream_id":"3u9hj23n"}
+{"time":"2024-12-24T10:09:55.719377316-05:00","level":"INFO","msg":"writer: Do: started","stream_id":"3u9hj23n"}
+{"time":"2024-12-24T10:09:55.719401408-05:00","level":"INFO","msg":"handler: started","stream_id":"3u9hj23n"}
+{"time":"2024-12-24T10:09:55.960187316-05:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2024-12-24T10:10:46.593191402-05:00","level":"INFO","msg":"stream: closing","id":"3u9hj23n"}
+{"time":"2024-12-24T10:10:46.593199052-05:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2024-12-24T10:10:46.593526504-05:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2024-12-24T10:10:47.728230128-05:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2024-12-24T10:10:47.963590608-05:00","level":"INFO","msg":"handler: closed","stream_id":"3u9hj23n"}
+{"time":"2024-12-24T10:10:47.963611445-05:00","level":"INFO","msg":"writer: Close: closed","stream_id":"3u9hj23n"}
+{"time":"2024-12-24T10:10:47.963633047-05:00","level":"INFO","msg":"sender: closed","stream_id":"3u9hj23n"}
+{"time":"2024-12-24T10:10:47.963659778-05:00","level":"INFO","msg":"stream: closed","id":"3u9hj23n"}

@@ -9,6 +9,8 @@ from typing import Sequence, NamedTuple, Any
 from flax.training.train_state import TrainState
 import distrax
 import gymnax
+import wandb
+
 from core.wrappers import (
     LogWrapper,
     BraxGymnaxWrapper,
@@ -42,11 +44,8 @@ def make_train(config):
     )
     initialize_config(cfg=config)
 
-    ### TensorBoard Setup ###
-    # log_dir = os.path.join("runs", config["ENV_NAME"], datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
-    log_dir = logdir(config)
-    writer = SummaryWriter(log_dir)
-    print(f"Logging to TensorBoard at: {log_dir}")
+    ### Weight and Bias Setup ###
+    wandb.init(project="HyperGradient-RL", config = config)
 
     ###Initialize Environment ###
     env, env_params = BraxGymnaxWrapper(config["ENV_NAME"]), None
@@ -217,14 +216,14 @@ def make_train(config):
             
             # Debugging mode
             if config.get("DEBUG"):
+
                 def callback(info):
                     return_values = info["returned_episode_returns"][info["returned_episode"]]
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
                     for t in range(len(timesteps)):
                         print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
-                        writer.add_scalar("episodic_return", return_values[t], timesteps[t])
+                        wandb.log({"Reward": return_values[t]}, step=timesteps[t])
                 jax.debug.callback(callback, metric)
-                
 
             runner_state = (actor_state, critic_state, env_state, last_obs, rng)
             return runner_state, metric
@@ -244,10 +243,10 @@ if __name__ == "__main__":
     # logging.basicConfig(filename='ppo.log', level=logging.INFO, format='%(message)s')
     config = {
         "LR": 3e-4,
-        "NUM_ENVS": 2048,
-        "NUM_STEPS": 10,
-        "TOTAL_TIMESTEPS": 5e7,
-        "UPDATE_EPOCHS": 4,
+        "NUM_ENVS": 32,
+        "NUM_STEPS": 512,
+        "TOTAL_TIMESTEPS": 5e6,
+        "UPDATE_EPOCHS": 10,
         "NUM_MINIBATCHES": 32,
         "GAMMA": 0.99,
         "GAE_LAMBDA": 0.95,
@@ -260,6 +259,8 @@ if __name__ == "__main__":
         "ANNEAL_LR": False,
         "NORMALIZE_ENV": True,
         "DEBUG": True,
+
+        "FLUSH_EVERY": 10,
     }
     rng = jax.random.PRNGKey(30)
     train_jit = jax.jit(make_train(config))
