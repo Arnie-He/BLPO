@@ -17,6 +17,7 @@ from core.wrappers import (
 )
 from core.model import DiscreteActor, Critic, ContinuousActor
 from core.utilities import initialize_config, linear_schedule, logdir, cosine_similarity
+import argparse
 
 class Transition(NamedTuple):
     done: jnp.ndarray
@@ -40,6 +41,7 @@ def make_train(config):
 
     ### Weight and Bias Setup ###
     wandb.init(project="HyperGradient-RL", config = config)
+    wandb.define_metric("Reward", summary="mean")
 
     ###Initialize Environment ###
     env, env_params = BraxGymnaxWrapper(config["ENV_NAME"]), None
@@ -347,10 +349,16 @@ def make_train(config):
 
 if __name__ == "__main__":
     # logging.basicConfig(filename='ppo.log', level=logging.INFO, format='%(message)s')
-    config = {
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("--vanilla", type=bool, default=True, help="Use Vanilla setting")
+    # args = parser.parse_args()
+
+   
+    # Original configuration
+    original_config = {
         "NUM_ENVS": 32,
         "NUM_STEPS": 640,
-        "TOTAL_TIMESTEPS": 5e7,
+        "TOTAL_TIMESTEPS": 3e6,
         "UPDATE_EPOCHS": 4,
         "NUM_MINIBATCHES": 32,
         "GAMMA": 0.99,
@@ -364,19 +372,66 @@ if __name__ == "__main__":
         "ANNEAL_LR": False,
         "NORMALIZE_ENV": True,
         "DEBUG": True,
-
         "actor-LR": 3e-4,
         "critic-LR": 1e-3,
-        "vanilla": True,
-
         "nystrom_rank": 5,
         "nystrom_rho": 50,
         "nested_updates": 3,
         "IHVP_BOUND": 0.2,
 
-        "vanilla": False,
+        #"vanilla": args.vanilla,
+
     }
-    rng = jax.random.PRNGKey(30)
-    train_jit = jax.jit(make_train(config))
-    # train_jit = make_train(config)
-    out = train_jit(rng)
+
+    # Define the sweep configuration
+    sweep_config = {
+        "method": "bayes",  # Choose from "grid", "random", "bayes"
+        "metric": {
+            "name": "Reward.mean",
+            "goal": "maximize"
+        },
+        "parameters": {
+            "actor-LR": {
+                "values": [3e-4, 1e-3, 3e-3]
+            },
+            "critic-LR": {
+                "values": [1e-3, 5e-4, 1e-4]
+            },
+            "GAE_LAMBDA": {
+                "values": [0.95, 0.9, 0.99]
+            },
+            "vanilla": {
+                "values": [True, False]
+            },
+            "nested_updates": {
+                "values": [3, 5, 7]
+            }
+        }
+    }
+
+    # Initialize the sweep
+    sweep_id = wandb.sweep(sweep_config, project="jax-ppo")
+
+    # Function to merge wandb.config with original_config
+    def train_with_wandb():
+        wandb.init()  # Initialize wandb and access the sweep parameters
+        sweep_config = wandb.config
+
+        # Merge original config with sweep config
+        merged_config = {**original_config, **sweep_config}
+
+        # Call your training function with the merged configuration
+        train_jit = jax.jit(make_train(merged_config))
+        rng = jax.random.PRNGKey(30)
+
+        # Run the training loop
+        out = train_jit(rng)
+        metrics = out["metrics"]
+
+        wandb.log({"Final Reward": metrics})
+
+    # Run the sweep
+    wandb.agent(sweep_id, function=train_with_wandb, count=10)
+
+
+
