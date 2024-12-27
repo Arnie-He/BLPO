@@ -330,7 +330,7 @@ def make_train(config):
                     return_values = info["returned_episode_returns"][info["returned_episode"]]
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
                     for t in range(len(timesteps)):
-                        print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
+                        #print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                         wandb.log({"Reward": return_values[t]}, step=timesteps[t])
                 jax.debug.callback(callback, metric)
 
@@ -358,7 +358,7 @@ if __name__ == "__main__":
     original_config = {
         "NUM_ENVS": 32,
         "NUM_STEPS": 640,
-        "TOTAL_TIMESTEPS": 3e6,
+        "TOTAL_TIMESTEPS": 1e6,
         "UPDATE_EPOCHS": 4,
         "NUM_MINIBATCHES": 32,
         "GAMMA": 0.99,
@@ -379,38 +379,66 @@ if __name__ == "__main__":
         "nested_updates": 3,
         "IHVP_BOUND": 0.2,
 
-        #"vanilla": args.vanilla,
+        "vanilla": True,
 
     }
 
     # Define the sweep configuration
     sweep_config = {
-        "method": "bayes",  # Choose from "grid", "random", "bayes"
+        "method": "bayes",
         "metric": {
             "name": "Reward.mean",
             "goal": "maximize"
         },
         "parameters": {
             "actor-LR": {
-                "values": [3e-4, 1e-3, 3e-3]
+                "distribution": "uniform",
+                "min": 1e-4,
+                "max": 5e-4
             },
             "critic-LR": {
-                "values": [1e-3, 5e-4, 1e-4]
+                "distribution": "uniform",
+                "min": 5e-4,
+                "max": 5e-3
             },
             "GAE_LAMBDA": {
-                "values": [0.95, 0.9, 0.99]
-            },
-            "vanilla": {
-                "values": [True, False]
+                "distribution": "uniform",
+                "min": 0.9,
+                "max": 0.99
             },
             "nested_updates": {
-                "values": [3, 5, 7]
+                "distribution": "int_uniform",
+                "min": 3,
+                "max": 10
+            },
+            "ACTIVATION": {
+                "values": ["tanh", "relu"]
+            },
+            "nystrom_rho": {
+                "distribution": "uniform",
+                "min": 10,
+                "max": 100
+            },
+            "IHVP_BOUND": {
+                "distribution": "uniform",
+                "min": 0.1,
+                "max": 0.5
+            },
+            "CLIP_EPS": {
+                "distribution": "uniform",
+                "min": 0.1,
+                "max": 0.3
+            },
+            "MAX_GRAD_NORM": {
+                "distribution": "uniform",
+                "min": 0.1,
+                "max": 0.75
             }
         }
     }
 
     # Initialize the sweep
-    sweep_id = wandb.sweep(sweep_config, project="jax-ppo")
+    sweep_id = wandb.sweep(sweep_config, project="jax-ppo-hypergrad")
 
     # Function to merge wandb.config with original_config
     def train_with_wandb():
@@ -431,7 +459,7 @@ if __name__ == "__main__":
         wandb.log({"Final Reward": metrics})
 
     # Run the sweep
-    wandb.agent(sweep_id, function=train_with_wandb, count=10)
+    wandb.agent(sweep_id, function=train_with_wandb, count=50)
 
 
 
