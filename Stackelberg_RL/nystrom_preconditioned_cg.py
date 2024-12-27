@@ -13,7 +13,6 @@ from core.model import DiscreteActor, Critic
 from core.utilities import initialize_config, linear_schedule, cosine_similarity, logdir
 import logging 
 import os
-from tensorboardX import SummaryWriter
 import datetime
 import copy
 

@@ -12,7 +12,6 @@ from core.wrappers import LogWrapper, FlattenObservationWrapper
 from core.model import DiscreteActor, Critic
 from core.utilities import initialize_config, linear_schedule, cosine_similarity
 import os
-from tensorboardX import SummaryWriter
 import datetime
 import wandb
 
