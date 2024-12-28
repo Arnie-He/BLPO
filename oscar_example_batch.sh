@@ -14,4 +14,4 @@ unset LD_LIBRARY_PATH
 echo $LD_LIBRARY_PATH
 
 source /oscar/data/gk/psaluja/jax_env.venv/bin/activate
-python3 -u kernel.py
+

@@ -174,7 +174,7 @@ def make_train(config):
                         errors = jnp.square(targets - values)
                         return jnp.mean(errors)
                     
-                    def leader_f2_loss(actor_params, critic_params, transitions):
+                    def leader_f2_loss(actor_params, critic_params, transitions, targets):
                         # action_dists = jax.vmap(actor_network.apply, in_axes=(None, 0))(actor_params, transitions.obs)
                         # log_probs = action_dists.log_prob(transitions.action)
                         # prob_ratios = jnp.exp(log_probs - transitions.log_prob)
@@ -191,11 +191,15 @@ def make_train(config):
                         prob_ratios = jnp.exp(log_probs - transitions.log_prob)
 
                         advantage_losses = prob_ratios * advantages
-                        clipped_ratios = jnp.clip(prob_ratios, 1 - config["CLIP_EPS"], 1 + config["CLIP_EPS"])
-                        clipped_losses = clipped_ratios * advantages
+                        # clipped_ratios = jnp.clip(prob_ratios, 1 - config["CLIP_EPS"], 1 + config["CLIP_EPS"])
+                        # clipped_losses = clipped_ratios * advantages
 
-                        ppo_losses = jnp.minimum(advantage_losses, clipped_losses)
-                        return 2 * -jnp.mean(ppo_losses)
+                        # ppo_losses = jnp.minimum(advantage_losses, clipped_losses)
+                        ppo_losses = advantage_losses
+
+                        values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, transitions.obs)
+                        
+                        return 2 * jnp.mean(targets - values) * -jnp.mean(ppo_losses)
 
                     ### update actor for config["nested_updates"] times ###
                     actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_p, traj_batch)
@@ -228,7 +232,7 @@ def make_train(config):
                         inverse_hvp_flat = nystrom_hvp(config["nystrom_rank"], config["nystrom_rho"])
                         inverse_hvp = unflatten_fn(inverse_hvp_flat)
                         def mixed_grad_fn(policy_params, critic_params):
-                            return jax.grad(leader_f2_loss)(policy_params, critic_params, traj_batch)
+                            return jax.grad(leader_f2_loss)(policy_params, critic_params, traj_batch, targets)
                         _, final_product = jax.jvp(
                             lambda p: mixed_grad_fn(actor_state.params, p),
                             (critic_p,),
