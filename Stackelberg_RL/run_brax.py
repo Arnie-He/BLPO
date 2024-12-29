@@ -28,8 +28,8 @@ class Transition(NamedTuple):
     obs: jnp.ndarray
     info: jnp.ndarray
 
-def make_train(config):
 
+def make_train(config):
     #### Prepare some hyperparameters ###
     config["NUM_UPDATES"] = (
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -40,8 +40,10 @@ def make_train(config):
     initialize_config(cfg=config)
 
     ### Weight and Bias Setup ###
-    wandb.init(project="HyperGradient-RL", config = config)
+    #name env_is_vanilla__seed
+    wandb.init(project=f"ppo_{config['ENV_NAME']}", config = config, name=f"{config['ENV_NAME']}_vanilla:{config['vanilla']}_seed:{config['seed']}", group=f"vanilla:{config['vanilla']}-nest:{config['nested_updates']}")
     wandb.define_metric("Reward", summary="mean")
+
 
     ###Initialize Environment ###
     env, env_params = BraxGymnaxWrapper(config["ENV_NAME"]), None
@@ -358,15 +360,24 @@ def make_train(config):
     return train
 
 
+
 if __name__ == "__main__":
     # logging.basicConfig(filename='ppo.log', level=logging.INFO, format='%(message)s')
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("--vanilla", type=bool, default=True, help="Use Vanilla setting")
-    # args = parser.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--vanilla',action='store_true')
+    parser.add_argument('--nested_updates', type=int, default=1, help='Number of nested updates')
+    parser.add_argument("--env", type=str, default="hopper", help="Use Vanilla setting")
+    parser.add_argument('--seed', type=int, default=30, help='Random seed')
+    args = parser.parse_args()
+
+    print("Script for vanilla:", args.vanilla, "env:", args.env, "seed:", args.seed)
+   
+
 
 
     # Original configuration
-    original_config = {
+    # Original configuration
+    best_config = {
         "NUM_ENVS": 32,
         "NUM_STEPS": 640,
         "TOTAL_TIMESTEPS": 5e6,
@@ -376,128 +387,28 @@ if __name__ == "__main__":
         "GAE_LAMBDA": 0.99234,
         "CLIP_EPS": 0.39485,
         "ACTIVATION": "sigmoid",
-        "ENV_NAME": "hopper",
         "ANNEAL_LR": False,
         "NORMALIZE_ENV": True,
         "DEBUG": True,
-        "actor-LR": 0.00072992,
-        "critic-LR": 0.0025241,
+        "actor-LR": 0.00072992, #might be too high 2.5e-4 ior 3e-4 is typical
+        "critic-LR": 0.0025241, #3-4 times higher than actor for nested updates 0025241
 
-        "nystrom_rank": 5,
-        "nystrom_rho": 50,
-        "nested_updates": 3,
-        "IHVP_BOUND": 0.2,
+        "nystrom_rank": 2,
+        "nystrom_rho": 1.0,
+        "IHVP_BOUND": 0.1276,
 
-        "vanilla": False,
+        "nested_updates": args.nested_updates,
+        "vanilla": args.vanilla,
+        "seed": args.seed,
+        "ENV_NAME": args.env,
 
-    }
 
-    # Define the sweep configuration
-    vanilla_sweep_config = {
-        "method": "bayes",
-        "metric": {
-            "name": "Reward.mean",
-            "goal": "maximize"
-        },
-        "parameters": {
-
-            "GAMMA": {
-                "distribution": "uniform",
-                "min": 0.9,
-                "max": 0.999
-            },
-            "actor-LR": {
-                "distribution": "uniform",
-                "min": 5e-4,
-                "max": 5e-3
-            },
-            "critic-LR": {
-                "distribution": "uniform",
-                "min": 5e-4,
-                "max": 5e-3
-            },
-            "GAE_LAMBDA": {
-                "distribution": "uniform",
-                "min": 0.9,
-                "max": 0.999
-            },
-            "nested_updates": {
-                "distribution": "int_uniform",
-                "min": 3,
-                "max": 10
-            },
-            "ACTIVATION": {
-                "values": ["tanh", "relu", "sigmoid"]
-            },
-            "CLIP_EPS": {
-                "distribution": "uniform",
-                "min": 0.1,
-                "max": 0.5
-            },
         }
-    }
+    train_jit = jax.jit(make_train(best_config))
+    rng = jax.random.PRNGKey(args.seed)
+    out = train_jit(rng)
+    metrics = out["metrics"]
+    wandb.log({"Final Reward": metrics})
 
-    # Define the sweep configuration
-    hypergradient_sweep_config = {
-        "method": "bayes",
-        "metric": {
-            "name": "Reward.mean",
-            "goal": "maximize"
-        },
-        "parameters": {
-            "nested_updates": {
-                "distribution": "int_uniform",
-                "min": 1,
-                "max": 5
-            },
-
-            "IHVP_BOUND": {
-                "distribution": "uniform",
-                "min": 0.1,
-                "max": 1.0
-            },
-            "nystrom_rho": {
-                "distribution": "uniform",
-                "min": 0.01,
-                "max": 1.0
-            },
-            "nystrom_rank": {
-                "distribution": "int_uniform",
-                "min": 2,
-                "max": 15
-            }
-        }   
-    }
-
-
-    if original_config["vanilla"]:
-        sweep_config = vanilla_sweep_config
-    else:
-        #combine the two sweep configs
-        sweep_config = hypergradient_sweep_config
-
-    # Initialize the sweep
-    sweep_id = wandb.sweep(sweep_config, project="jax-ppo-hypergrad")
-
-    # Function to merge wandb.config with original_config
-    def train_with_wandb():
-        wandb.init()  # Initialize wandb and access the sweep parameters
-        sweep_config = wandb.config
-
-        # Merge original config with sweep config
-        merged_config = {**original_config, **sweep_config}
-
-        # Call your training function with the merged configuration
-        train_jit = jax.jit(make_train(merged_config))
-        rng = jax.random.PRNGKey(30)
-
-        # Run the training loop
-        out = train_jit(rng)
-        metrics = out["metrics"]
-
-        wandb.log({"Final Reward": metrics})
-
-    # Run the sweep
-    wandb.agent(sweep_id, function=train_with_wandb, count=1000)
 
 
