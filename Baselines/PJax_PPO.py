@@ -9,11 +9,12 @@ from flax.training.train_state import TrainState
 import distrax
 import gymnax
 from core.wrappers import LogWrapper, FlattenObservationWrapper
-from core.utilities import logdir
+from core.utilities import run_name
 from core.model import ActorCritic
 from tensorboardX import SummaryWriter
 import datetime
 import os
+import wandb
 
 class Transition(NamedTuple):
     done: jnp.ndarray
@@ -36,11 +37,8 @@ def make_train(config):
     env = FlattenObservationWrapper(env)
     env = LogWrapper(env)
 
-    ### TensorBoard Setup ###
-    # log_dir = os.path.join("runs", config["ENV_NAME"], datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
-    log_dir = logdir(config)
-    writer = SummaryWriter(log_dir)
-    print(f"Logging to TensorBoard at: {log_dir}")
+    ### Weight and Bias Setup ###
+    wandb.init(project="HyperGradient-RL", group=f'{config["ENV_NAME"]}_vanilla_ppo', name=run_name(config), config = config)
 
     def linear_schedule(count):
         frac = (
@@ -236,8 +234,8 @@ def make_train(config):
                     return_values = info["returned_episode_returns"][info["returned_episode"]]
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
                     for t in range(len(timesteps)):
-                        print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
-                        writer.add_scalar("episodic_return", return_values[t], timesteps[t])
+                        # print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
+                        wandb.log({"Reward": return_values[t]}, step=timesteps[t])
                 jax.debug.callback(callback, metric)
 
             runner_state = (train_state, env_state, last_obs, rng)

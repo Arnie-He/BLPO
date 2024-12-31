@@ -6,25 +6,28 @@ import optax
 from flax.linen.initializers import constant, orthogonal
 from typing import Sequence, NamedTuple, Any
 from flax.training.train_state import TrainState
-import distrax
-import gymnax
-from core.wrappers import LogWrapper, FlattenObservationWrapper
-from core.model import DiscreteActor, Critic
-from core.utilities import initialize_config, linear_schedule, cosine_similarity, logdir
-import logging 
-import os
-import datetime
-import copy
 import wandb
+from core.wrappers import (
+    LogWrapper,
+    BraxGymnaxWrapper,
+    VecEnv,
+    NormalizeVecObservation,
+    NormalizeVecReward,
+    ClipAction,
+)
+from core.model import DiscreteActor, Critic, ContinuousActor
+from core.utilities import initialize_config, linear_schedule, run_name, cosine_similarity
+import argparse
 
 class Transition(NamedTuple):
     done: jnp.ndarray
     action: jnp.ndarray
+    value: jnp.ndarray
     reward: jnp.ndarray
     log_prob: jnp.ndarray
     obs: jnp.ndarray
     info: jnp.ndarray
-    
+
 def make_train(config):
 
     #### Prepare some hyperparameters ###
@@ -36,20 +39,29 @@ def make_train(config):
     )
     initialize_config(cfg=config)
 
-   ### Weight and Bias Setup ###
-    wandb.init(project="HyperGradient-RL", config = config)
+    ### Weight and Bias Setup ###
+    if config.get("vanilla", False):
+        group_name = f'{config["ENV_NAME"]}_Nested'
+    else:
+        group_name = f'{config["ENV_NAME"]}_Nystrom2'
+    wandb.init(project="HyperGradient-RL", group=group_name, name=run_name(config), config = config)
+    wandb.define_metric("Reward", summary="mean")
 
     ###Initialize Environment ###
-    env, env_params = gymnax.make(config["ENV_NAME"])
-    env = FlattenObservationWrapper(env)
+    env, env_params = BraxGymnaxWrapper(config["ENV_NAME"]), None
     env = LogWrapper(env)
+    env = ClipAction(env)
+    env = VecEnv(env)
+    if config["NORMALIZE_ENV"]:
+        env = NormalizeVecObservation(env)
+        env = NormalizeVecReward(env, config["GAMMA"])
 
     def train(rng):
         ### INIT NETWORK ###
         rng, actor_rng, critic_rng = jax.random.split(rng, 3)
         empty_observation = jnp.zeros(env.observation_space(env_params).shape)
 
-        actor_network = DiscreteActor(env.action_space(env_params).n, activation = config["ACTIVATION"])
+        actor_network = ContinuousActor(env.action_space(env_params).shape[0], activation = config["ACTIVATION"])
         actor_params = actor_network.init(actor_rng, empty_observation)
         actor_state = TrainState.create(
             apply_fn = actor_network.apply,
@@ -63,21 +75,23 @@ def make_train(config):
             params = critic_params, 
             tx = optax.adam(learning_rate=config["critic-LR"], eps=1e-5),
         )
-
+        
         ### Parraleled Environments ###
         rng, _rng = jax.random.split(rng)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
-        obsv, env_state = jax.vmap(env.reset, in_axes=(0, None))(reset_rng, env_params)
+        obsv, env_state = env.reset(reset_rng, env_params)
         
         ################################ Start Training ##########################
         # TRAIN LOOP
         def _update_step(runner_state, unused):
+
             # COLLECT TRAJECTORIES
             def _env_step(runner_state, unused):
                 actor_state, critic_state, env_state, last_obs, rng = runner_state
 
                 # SELECT ACTION
                 pi = actor_network.apply(actor_state.params, last_obs)
+                value = critic_network.apply(critic_state.params, last_obs)
 
                 rng, actor_rng = jax.random.split(rng)
                 action = pi.sample(seed=actor_rng)
@@ -86,12 +100,11 @@ def make_train(config):
                 # STEP ENV
                 rng, _rng = jax.random.split(rng)
                 rng_step = jax.random.split(_rng, config["NUM_ENVS"])
-                obsv, env_state, reward, done, info = jax.vmap(
-                    env.step, in_axes=(0, 0, 0, None)
-                )(rng_step, env_state, action, env_params)
-                # temporarily hold the values field.
+                obsv, env_state, reward, done, info = env.step(
+                    rng_step, env_state, action, env_params
+                )
                 transition = Transition(
-                    done, action, reward, log_prob, last_obs,  info
+                    done, action, value, reward, log_prob, last_obs, info
                 )
                 runner_state = (actor_state, critic_state, env_state, obsv, rng)
                 return runner_state, transition
@@ -157,10 +170,10 @@ def make_train(config):
                         """Calculates the clipped advantage estimator on a batch of transitions."""
                         advantages, _ = calculate_gae(critic_params, traj_batch, last_obs)
 
-                        action_dists = jax.vmap(actor_network.apply, in_axes=(None, 0))(actor_params, transitions.obs)
+                        action_dists = actor_network.apply(actor_params, transitions.obs)
                         log_probs = action_dists.log_prob(transitions.action)
-                        prob_ratios = jnp.exp(log_probs - transitions.log_prob)
 
+                        prob_ratios = jnp.exp(log_probs - transitions.log_prob)
                         advantage_losses = prob_ratios * advantages
                         clipped_ratios = jnp.clip(prob_ratios, 1 - config["CLIP_EPS"], 1 + config["CLIP_EPS"])
                         clipped_losses = clipped_ratios * advantages
@@ -175,34 +188,29 @@ def make_train(config):
                         return jnp.mean(errors)
                     
                     def leader_f2_loss(actor_params, critic_params, transitions, targets):
-                        # action_dists = jax.vmap(actor_network.apply, in_axes=(None, 0))(actor_params, transitions.obs)
-                        # log_probs = action_dists.log_prob(transitions.action)
-                        # prob_ratios = jnp.exp(log_probs - transitions.log_prob)
-                        # clipped_ratios = jnp.clip(prob_ratios, 1 - config["CLIP_EPS"], 1 + config["CLIP_EPS"])
-                        # advantages, _ = calculate_gae(critic_params, transitions, last_obs=last_obs)
-                        # result = advantages[:-1] * (config["GAMMA"] * advantages[1:] * log_probs[1:] - advantages[:-1] * log_probs[:-1])
-                        # clipped_result = advantages[:-1] * (config["GAMMA"] * advantages[1:] * clipped_ratios[1:] - advantages[:-1] * clipped_ratios[:-1])
-                        # f2_loss = jnp.minimum(result, clipped_result)
-                        # return 2 * jnp.mean(f2_loss)
                         advantages, _ = calculate_gae(critic_params, traj_batch, last_obs)
 
-                        action_dists = jax.vmap(actor_network.apply, in_axes=(None, 0))(actor_params, transitions.obs)
+                        action_dists = actor_network.apply(actor_params, transitions.obs)
                         log_probs = action_dists.log_prob(transitions.action)
                         prob_ratios = jnp.exp(log_probs - transitions.log_prob)
 
                         advantage_losses = prob_ratios * advantages
-                        # clipped_ratios = jnp.clip(prob_ratios, 1 - config["CLIP_EPS"], 1 + config["CLIP_EPS"])
-                        # clipped_losses = clipped_ratios * advantages
+                        clipped_ratios = jnp.clip(prob_ratios, 1 - config["CLIP_EPS"], 1 + config["CLIP_EPS"])
+                        clipped_losses = clipped_ratios * advantages
 
-                        # ppo_losses = jnp.minimum(advantage_losses, clipped_losses)
-                        ppo_losses = advantage_losses
+                        ppo_losses = jnp.minimum(advantage_losses, clipped_losses)
 
-                        values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, transitions.obs)
-                        
-                        return 2 * jnp.mean(targets - values) * -jnp.mean(ppo_losses)
+                        # values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, transitions.obs)
+                        # return 2 * -jnp.mean(ppo_losses) * jnp.mean(targets - values)
+                        return 2 * -jnp.mean(ppo_losses)
 
-                    ### update actor for config["nested_updates"] times ###
-                    actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_p, traj_batch)
+                     ### Update the critic state for several epochs ###
+                    for _ in range(config["nested_updates"]):
+                        critic_loss, critic_grad = jax.value_and_grad(critic_target_loss)(critic_state.params, traj_batch, targets)
+                        critic_state = critic_state.apply_gradients(grads=critic_grad)
+
+                    ### update actor for 1 times ###
+                    actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_state.params, traj_batch)
 
                     def hypergrad():
                         _, unflatten_fn = jax.flatten_util.ravel_pytree(critic_state.params)
@@ -235,7 +243,7 @@ def make_train(config):
                             return jax.grad(leader_f2_loss)(policy_params, critic_params, traj_batch, targets)
                         _, final_product = jax.jvp(
                             lambda p: mixed_grad_fn(actor_state.params, p),
-                            (critic_p,),
+                            (critic_state.params,),
                             (inverse_hvp,)
                         )
                         # bound the final_product
@@ -259,11 +267,6 @@ def make_train(config):
                         false_fun=lambda : hypergrad()
                     )
                     actor_state = actor_state.apply_gradients(grads=total_gradient)
-
-                    ### Update the critic state for several epoch ###
-                    for _ in range(config["nested_updates"]):
-                        critic_loss, critic_grad = jax.value_and_grad(critic_target_loss)(critic_state.params, traj_batch, targets)
-                        critic_state = critic_state.apply_gradients(grads=critic_grad)
 
                     total_loss = actor_loss + critic_loss
                     train_state = (actor_state, critic_state)
@@ -322,7 +325,7 @@ def make_train(config):
                     return_values = info["returned_episode_returns"][info["returned_episode"]]
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
                     for t in range(len(timesteps)):
-                        print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
+                        #print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                         wandb.log({"Reward": return_values[t]}, step=timesteps[t])
                 jax.debug.callback(callback, metric)
 
@@ -336,21 +339,23 @@ def make_train(config):
         )
         
         return {"runner_state": runner_state, "metrics": metric}
-
     return train
 
 
 if __name__ == "__main__":
-    os.environ["JAX_PLATFORM_NAME"] = "gpu"
+    # logging.basicConfig(filename='ppo.log', level=logging.INFO, format='%(message)s')
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("--vanilla", type=bool, default=True, help="Use Vanilla setting")
+    # args = parser.parse_args()
 
+   
+    # Original configuration
     config = {
-        "actor-LR": 2.5e-4,
-        "critic-LR" : 1e-3, 
-        "NUM_ENVS": 4,
-        "NUM_STEPS": 128,
-        "TOTAL_TIMESTEPS": 5e5,
-        "UPDATE_EPOCHS": 5,
-        "NUM_MINIBATCHES": 4,
+        "NUM_ENVS": 32,
+        "NUM_STEPS": 640,
+        "TOTAL_TIMESTEPS": 1e6,
+        "UPDATE_EPOCHS": 4,
+        "NUM_MINIBATCHES": 32,
         "GAMMA": 0.99,
         "GAE_LAMBDA": 0.95,
         "CLIP_EPS": 0.2,
@@ -358,16 +363,20 @@ if __name__ == "__main__":
         "VF_COEF": 0.5,
         "MAX_GRAD_NORM": 0.5,
         "ACTIVATION": "tanh",
-        "ENV_NAME": "Acrobot-v1",
-        "ANNEAL_LR": True,
+        "ENV_NAME": "hopper",
+        "ANNEAL_LR": False,
+        "NORMALIZE_ENV": True,
         "DEBUG": True,
+        "actor-LR": 3e-4,
+        "critic-LR": 1e-3,
 
-        "nystrom_rank": 10,
+        "nystrom_rank": 5,
         "nystrom_rho": 50,
-        "nested_updates": 10,
+        "nested_updates": 3,
         "IHVP_BOUND": 0.2,
 
-        "vanilla": False,
+        "vanilla": True,
+
     }
 
     rng = jax.random.PRNGKey(30)

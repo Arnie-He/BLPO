@@ -20,7 +20,7 @@ from core.wrappers import (
     ClipAction,
 )
 from core.model import DiscreteActor, Critic, ContinuousActor
-from core.utilities import initialize_config, linear_schedule, logdir
+from core.utilities import initialize_config, linear_schedule, run_name
 import logging 
 from tensorboardX import SummaryWriter
 
@@ -45,7 +45,8 @@ def make_train(config):
     initialize_config(cfg=config)
 
     ### Weight and Bias Setup ###
-    wandb.init(project="HyperGradient-RL", config = config)
+    group_name = f'{config["ENV_NAME"]}_Vannila'
+    wandb.init(project="HyperGradient-RL", group= group_name, name=run_name(config), config = config)
 
     ###Initialize Environment ###
     env, env_params = BraxGymnaxWrapper(config["ENV_NAME"]), None
@@ -221,7 +222,7 @@ def make_train(config):
                     return_values = info["returned_episode_returns"][info["returned_episode"]]
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
                     for t in range(len(timesteps)):
-                        print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
+                        # print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                         wandb.log({"Reward": return_values[t]}, step=timesteps[t])
                 jax.debug.callback(callback, metric)
 
@@ -259,8 +260,6 @@ if __name__ == "__main__":
         "ANNEAL_LR": False,
         "NORMALIZE_ENV": True,
         "DEBUG": True,
-
-        "FLUSH_EVERY": 10,
     }
     rng = jax.random.PRNGKey(30)
     train_jit = jax.jit(make_train(config))

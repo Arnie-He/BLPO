@@ -2,16 +2,8 @@ import argparse
 import jax
 import os
 
-from Stackelberg_RL.discrete import nystrom_preconditioned_cg
-from Baselines import PJax_PPO
-from Stackelberg_RL.discrete import CG_ppo, nystrom_ppo
-
-task_dict = {
-    "cartpole": "CartPole-v1",
-    "acrobot": "Acrobot-v1",
-    "spaceinvaders": "SpaceInvaders-MinAtar",
-    "breakout": "Breakout-MinAtar",
-}
+from Stackelberg_RL.continuous import continuous_nystrom_ppo, continuous_cg_ppo, test
+from Baselines import continuous_ppo
 
 def main():
     parser = argparse.ArgumentParser()
@@ -62,21 +54,21 @@ def main():
         "nested_updates": args.nested,
         "IHVP_BOUND": args.ihvp_bound,
         "vanilla": args.vanilla,
-        "CLIP_F": args.clipf
     }
     nystrom_config = nested_shared_config | { 
         "nystrom_rank": args.rank,
         "nystrom_rho": args.rho,
+        "CLIP_F": args.clipf
     }
     cg_config = nested_shared_config | {
         "lambda_reg": args.lam,
     }
 
     algos = {
-        "nystrom": (nystrom_ppo, nystrom_config),
-        "cg": (CG_ppo, cg_config),
-        "ppo": (PJax_PPO, ppo_config),
-        "npcg": (nystrom_preconditioned_cg, nystrom_config)
+        "nystrom": (continuous_nystrom_ppo, nystrom_config),
+        "cg": (continuous_cg_ppo, cg_config),
+        "ppo": (continuous_ppo, ppo_config),
+        "test": (test, nystrom_config),
     }
 
     algo, config = algos[args.algo]

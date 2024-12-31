@@ -42,12 +42,17 @@ def cosine_similarity(grad1, grad2):
 
 import os
 
-def logdir(config):
+def run_name(config):
     if config.get("vanilla", False):
         algo_dir = (
             f"VanillaNested_nested_updates={config['nested_updates']}_"
             f"criticLR={config['critic-LR']}"
         )
+    elif "lambda_reg" in config:
+        algo_dir = (
+             f"CG_nested_updates={config['nested_updates']}_"
+            f"lambdareg={config['lambda_reg']}_"
+            )
     elif "nystrom_rank" in config:
         algo_dir = (
             f"HypergradNystrom_nested_updates={config['nested_updates']}_"
@@ -57,7 +62,6 @@ def logdir(config):
         )
     else:
         algo_dir = "ppo"
-    algo_dir = f"Epoch{config['UPDATE_EPOCHS']}_" + algo_dir
+    algo_dir = f"{config['ENV_NAME']}_{config['SEED']}" + algo_dir
 
-    log_dir = os.path.join("runs", config["ENV_NAME"], algo_dir)
-    return log_dir
+    return algo_dir
