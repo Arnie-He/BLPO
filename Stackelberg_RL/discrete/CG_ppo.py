@@ -35,7 +35,7 @@ def make_train(config):
     initialize_config(cfg=config)
 
     ### Weight and Bias Setup ###
-    wandb.init(project="HyperGradient-RL", group=f'{config["ENV_NAME"]}_CG', name=run_name(config), config = config)
+    wandb.init(project="HyperGradient-RL", group=f'{config["ENV_NAME"]}_CG_{config["TOTAL_TIMESTEPS"]}', name=run_name(config), config = config)
 
     ###Initialize Environment ###
     env, env_params = gymnax.make(config["ENV_NAME"])

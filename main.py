@@ -35,12 +35,12 @@ def main():
         jax.config.update("jax_platform_name", "cpu")
 
     shared_config = {
-        "ENV_NAME": args.task,
+        "ENV_NAME": task_dict[args.task],
 
         "SEED": args.seed,
 
         "NUM_ENVS": 32,
-        "NUM_STEPS": 640,
+        "NUM_STEPS": 512,
         "TOTAL_TIMESTEPS": int(args.steps),
         "UPDATE_EPOCHS": 4,
         "NUM_MINIBATCHES": 32,
@@ -55,7 +55,7 @@ def main():
         "NORMALIZE_ENV": True,
         "DEBUG": True,
     }
-    ppo_config= shared_config | {"LR": 3e-4}
+    ppo_config= shared_config | {"LR": 2.5e-4}
     nested_shared_config = shared_config | {
         "actor-LR": 2.5e-4,
         "critic-LR" : 1e-3, 

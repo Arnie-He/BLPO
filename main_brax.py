@@ -47,7 +47,7 @@ def main():
         "NORMALIZE_ENV": True,
         "DEBUG": True,
     }
-    ppo_config= shared_config | {"LR": 3e-4}
+    ppo_config= shared_config | {"LR": 2.5e-4}
     nested_shared_config = shared_config | {
         "actor-LR": 2.5e-4,
         "critic-LR" : 1e-3, 
