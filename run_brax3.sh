@@ -18,7 +18,7 @@ seeds=(0 10 20 30 40)
 
 # @param ['ant', 'halfcheetah', 'hopper', 'humanoid', 'humanoidstandup', 'inverted_pendulum', 'inverted_double_pendulum', 'pusher', 'reacher', 'walker2d']
 for seed in "${seeds[@]}"; do
-    env_name="reacher"
+    env_name="pusher"
     echo "Running task=$env_name with seed=$seed"
     # Nystrom1
     python main_brax.py --task=$env_name --nested=3 --steps=8e6 --seed=$seed
@@ -34,7 +34,7 @@ done
 
 
 for seed in "${seeds[@]}"; do
-    env_name="inverted_pendulum"
+    env_name="humanoidstandup"
     echo "Running task=$env_name with seed=$seed"
     # Nystrom1
     python main_brax.py --task=$env_name --nested=5 --steps=8e6 --seed=$seed
