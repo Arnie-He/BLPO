@@ -156,15 +156,6 @@ def make_train(config):
                     actor_state, critic_state = train_state 
                     traj_batch, advantages, targets, last_obs = batch_info
 
-                    # in_gae, _ = calculate_gae(critic_p, traj_batch, last_obs)
-                    # copied_gae, _ = calculate_gae(critic_state.params, traj_batch, last_obs)
-                    # gae_norm = optax.global_norm(advantages)
-                    # in_gae_norm = optax.global_norm(in_gae)
-                    # jax.debug.print("traj_batch shape is {}", traj_batch.obs.shape)
-                    # jax.debug.print("out is {} while in is {}, copied is {}", gae_norm, in_gae_norm, optax.global_norm(copied_gae))
-                    # jax.debug.print("in gae shape {}", in_gae.shape)
-                    # jax.debug.print("out gae shape {}", advantages.shape)
-
                     ############ Define loss functions ##############
                     def ppo_loss(actor_params, critic_params, transitions):
                         """Calculates the clipped advantage estimator on a batch of transitions."""
@@ -293,13 +284,6 @@ def make_train(config):
                 minibatches = jax.tree_util.tree_map(
                     lambda x: jnp.take(x, permutation, axis=0), batch
                 )
-
-                # TJB, ADV, TAR, LOBS = minibatches
-                # jax.debug.print("##################################")
-                # # jax.debug.print("advantage norm is {}", optax.global_norm(advantages))
-                # lllllllllllladv = calculate_gae(critic_state.params, TJB, LOBS)
-                # jax.debug.print("lllllllllllladv is {}", optax.global_norm(lllllllllllladv))
-                # jax.debug.print("##################################")
 
                 train_state = (actor_state, critic_state)
                 train_state, total_loss = jax.lax.scan(

@@ -45,7 +45,7 @@ def make_train(config):
     initialize_config(cfg=config)
 
     ### Weight and Bias Setup ###
-    group_name = f'{config["ENV_NAME"]}_lr{config["LR"]}_vannila'
+    group_name = f'{config["ENV_NAME"]}_VF0.5_lr{config["LR"]}_vannila'
     wandb.init(project="HyperGradient-RL", group= group_name, name=run_name(config), config = config)
 
     ###Initialize Environment ###
@@ -164,7 +164,7 @@ def make_train(config):
                         """Calculates the mean squared error on a batch of transitions."""
                         values = jax.vmap(critic_state.apply_fn, in_axes=(None, 0))(params, transitions.obs)
                         errors = jnp.square(targets - values)
-                        return jnp.mean(errors)
+                        return config["VF_COEF"] * jnp.mean(errors)
                     
                     actor_loss, actor_grad = jax.value_and_grad(actor_advantage_loss)(actor_state.params, traj_batch, advantages)
                     actor_state = actor_state.apply_gradients(grads=actor_grad)
@@ -179,24 +179,17 @@ def make_train(config):
                 actor_state, critic_state, traj_batch, advantages, targets, rng = update_state
                 rng, _rng = jax.random.split(rng)
 
-                batch_size = config["MINIBATCH_SIZE"] * config["NUM_MINIBATCHES"]
+                # Batching and Shuffling
                 assert (
-                    batch_size == config["NUM_STEPS"] * config["NUM_ENVS"]
-                ), "batch size must be equal to number of steps * number of envs"
-                permutation = jax.random.permutation(_rng, batch_size)
+                    config["NUM_STEPS"] == config["MINIBATCH_SIZE"] and config["NUM_MINIBATCHES"] == config["NUM_ENVS"]
+                ), "Number of envs must match number of minibatches and minibatches' length must match rollout len!"
                 batch = (traj_batch, advantages, targets)
-                batch = jax.tree_util.tree_map(
-                    lambda x: x.reshape((batch_size,) + x.shape[2:]), batch
-                )
-                shuffled_batch = jax.tree_util.tree_map(
+                batch = jax.tree_util.tree_map(lambda x: x.swapaxes(0, 1), batch)
+                permutation = jax.random.permutation(_rng, config["NUM_MINIBATCHES"])
+                minibatches = jax.tree_util.tree_map(
                     lambda x: jnp.take(x, permutation, axis=0), batch
                 )
-                minibatches = jax.tree_util.tree_map(
-                    lambda x: jnp.reshape(
-                        x, [config["NUM_MINIBATCHES"], -1] + list(x.shape[1:])
-                    ),
-                    shuffled_batch,
-                )
+
                 train_state = (actor_state, critic_state)
                 train_state, total_loss = jax.lax.scan(
                     _update_minbatch, train_state, minibatches
