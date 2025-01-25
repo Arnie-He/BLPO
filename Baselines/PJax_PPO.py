@@ -38,7 +38,7 @@ def make_train(config):
     env = LogWrapper(env)
 
     ### Weight and Bias Setup ###
-    wandb.init(project="HyperGradient-RL", group=f'{config["ENV_NAME"]}_vanillappo_{config["TOTAL_TIMESTEPS"]}', name=run_name(config), config = config)
+    wandb.init(project="HyperGradient-RL", group=f'{config["Group"]}_{config["ENV_NAME"]}_vanilla', name=run_name(config), config = config)
 
     def linear_schedule(count):
         frac = (

@@ -2,8 +2,9 @@ import argparse
 import jax
 import os
 
-from Stackelberg_RL.continuous import cg_ppo, natural_ppo, nystrom_ppo
+from Stackelberg_RL.continuous import cg_ppo, nystrom_ppo
 from Baselines import continuous_ppo
+from Stackelberg_RL.continuous.archived import natural_ppo
 
 def main():
     parser = argparse.ArgumentParser()

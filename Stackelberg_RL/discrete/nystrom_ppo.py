@@ -38,9 +38,9 @@ def make_train(config):
 
    ### Weight and Bias Setup ###
     if config.get("vanilla", False):
-        group_name = f'{config["ENV_NAME"]}_Nested_{config["TOTAL_TIMESTEPS"]}'
+        group_name = f'{config["Group"]}_{config["ENV_NAME"]}_Nested'
     else:
-        group_name = f'{config["ENV_NAME"]}_Nystrom_{config["TOTAL_TIMESTEPS"]}'
+        group_name = f'{config["Group"]}_{config["ENV_NAME"]}_Nystrom'
     wandb.init(project="HyperGradient-RL", group=group_name, name=run_name(config), config = config)
     wandb.define_metric("Reward", summary="mean")
 

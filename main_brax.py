@@ -2,8 +2,9 @@ import argparse
 import jax
 import os
 
-from Stackelberg_RL.continuous import cg_ppo, natural_ppo, nystrom_ppo
+from Stackelberg_RL.continuous import cg_ppo, nystrom_ppo
 from Baselines import continuous_ppo
+from Stackelberg_RL.continuous.archived import natural_ppo
 
 def main():
     parser = argparse.ArgumentParser()
@@ -21,6 +22,7 @@ def main():
     parser.add_argument("--clip", type=float, default=0.2)
     parser.add_argument("--lam", type=float, default=0.0)
     parser.add_argument("--clipf", type=float, default=0.5)
+    parser.add_argument("--group", type=str, defualt = "G0")
     args = parser.parse_args()
 
     if args.cpu:
@@ -46,6 +48,8 @@ def main():
         "ANNEAL_LR": False,
         "NORMALIZE_ENV": True,
         "DEBUG": True,
+
+        "Group": args.group,
     }
     ppo_config= shared_config | {"LR": 3e-4}
     nested_shared_config = shared_config | {

@@ -45,7 +45,7 @@ def make_train(config):
     initialize_config(cfg=config)
 
     ### Weight and Bias Setup ###
-    group_name = f'{config["ENV_NAME"]}_VF0.5_lr{config["LR"]}_vannila'
+    group_name = f'{config["Group"]}_{config["ENV_NAME"]}_vannila'
     wandb.init(project="HyperGradient-RL", group= group_name, name=run_name(config), config = config)
 
     ###Initialize Environment ###
