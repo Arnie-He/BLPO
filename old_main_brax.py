@@ -31,15 +31,15 @@ def main():
 
         "SEED": args.seed,
 
-        "NUM_ENVS": 128,
-        "NUM_STEPS": 160,
+        "NUM_ENVS": 32,
+        "NUM_STEPS": 640,
         "TOTAL_TIMESTEPS": int(args.steps),
         "UPDATE_EPOCHS": 4,
-        "NUM_MINIBATCHES": 128,
+        "NUM_MINIBATCHES": 32,
         "GAMMA": 0.99,
         "GAE_LAMBDA": 0.95,
         "CLIP_EPS": args.clip,
-        "ENT_COEF": 0.0,
+        "ENT_COEF": 0.01,
         "VF_COEF": 0.5,
         "MAX_GRAD_NORM": 0.5,
         "ACTIVATION": "tanh",
@@ -47,9 +47,9 @@ def main():
         "NORMALIZE_ENV": True,
         "DEBUG": True,
     }
-    ppo_config= shared_config | {"LR": 3e-4}
+    ppo_config= shared_config | {"LR": 2.5e-4}
     nested_shared_config = shared_config | {
-        "actor-LR": 3e-4,
+        "actor-LR": 2.5e-4,
         "critic-LR" : 1e-3, 
         "nested_updates": args.nested,
         "IHVP_BOUND": args.ihvp_bound,

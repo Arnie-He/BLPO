@@ -39,15 +39,15 @@ def main():
 
         "SEED": args.seed,
 
-        "NUM_ENVS": 32,
-        "NUM_STEPS": 512,
+        "NUM_ENVS": 4,
+        "NUM_STEPS": 128,
         "TOTAL_TIMESTEPS": int(args.steps),
         "UPDATE_EPOCHS": 4,
         "NUM_MINIBATCHES": 32,
         "GAMMA": 0.99,
         "GAE_LAMBDA": 0.95,
         "CLIP_EPS": args.clip,
-        "ENT_COEF": 0.01,
+        "ENT_COEF": 0.00,
         "VF_COEF": 0.5,
         "MAX_GRAD_NORM": 0.5,
         "ACTIVATION": "tanh",
