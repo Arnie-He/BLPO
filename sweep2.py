@@ -26,7 +26,7 @@ sweep_config = {
     "metric": {"goal": "maximize", "name": "reward"}, 
     "parameters": {
         "SEED": {"value": 0},
-        "ENV_NAME": {"value": "humanoid"},  # Fixed value
+        "ENV_NAME": {"value": "halfcheetah"},  # Fixed value
         "NUM_ENVS": {"value": 32},  # Fixed value
         "NUM_STEPS": {"value": 640},  # Fixed value
         "TOTAL_TIMESTEPS": {"value": 2e7},  # Fixed value
@@ -54,12 +54,12 @@ sweep_config = {
         "nystrom_rho": {"value": 50},  # Fixed value
 
         # Range parameter
-        "CLIP_F": {"values": [0.8, 1.0, 1.2]},  # Correct format
+        "CLIP_F": {"min": 0.1, "max": 1.0},  # Correct format
     },
 }
 
 # Initialize the sweep
-sweep_id = wandb.sweep(sweep=sweep_config, project="hopper-sweep")
+sweep_id = wandb.sweep(sweep=sweep_config, project="HyperGradient-RL")
 
 # Run the sweep
 wandb.agent(sweep_id, function=main, count=10)

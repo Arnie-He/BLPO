@@ -40,8 +40,8 @@ def make_train(config):
     initialize_config(cfg=config)
 
     ### Weight and Bias Setup ###
-    group_name = f'{config["Group"]}_{config["ENV_NAME"]}_Nystrom'
-    wandb.init(project="HyperGradient-RL", group=group_name, name=run_name(config), config = config)
+    group_name = f'{config["Group"]}_{config["ENV_NAME"]}_CG'
+    wandb.init(project="HyperGradient-RL", group= group_name, name=run_name(config), config = config)
     wandb.define_metric("Reward", summary="mean")
 
     ###Initialize Environment ###
@@ -52,7 +52,7 @@ def make_train(config):
     if config["NORMALIZE_ENV"]:
         env = NormalizeVecObservation(env)
         env = NormalizeVecReward(env, config["GAMMA"])
-    
+
     def actor_linear_schedule(count):
         frac = (
             1.0
@@ -156,11 +156,6 @@ def make_train(config):
             
             actor_state, critic_state, env_state, last_obs, rng = runner_state
             advantages, targets = calculate_gae(critic_state.params, traj_batch, last_obs)
-            # adv_only = lambda p: calculate_gae(p, traj_batch, last_obs)[0]
-            # grad_w_adv = jax.grad(adv_only)(critic_state.params)
-            critic_p = jax.tree_util.tree_map(
-                    lambda x: jnp.copy(x), jax.lax.stop_gradient(critic_state.params)
-                )
 
             # UPDATE NETWORK
             def _update_epoch(update_state, unused):
@@ -203,68 +198,63 @@ def make_train(config):
                         clipped_losses = clipped_ratios * advantages
 
                         ppo_losses = jnp.minimum(advantage_losses, clipped_losses)
-                        values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, transitions.obs)
-                        
-                        return 2 * -jnp.mean(jnp.dot(ppo_losses, (targets - values)))
 
-                     ### Update the critic state for several epochs ###
+                        values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, transitions.obs)
+
+                        return 2 * -jnp.mean(jnp.dot(ppo_losses, (targets - values)))
+                        # return 2 * -jnp.mean(ppo_losses)
+
+                    ### Update the critic state for several epoch ###
                     for _ in range(config["nested_updates"]):
                         critic_loss, critic_grad = jax.value_and_grad(critic_target_loss)(critic_state.params, traj_batch, targets)
                         critic_state = critic_state.apply_gradients(grads=critic_grad)
 
-                    ### update actor for 1 times ###
+                    ### update actor for 1 time ###
                     actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_state.params, traj_batch)
+                    grad_w_J = jax.grad(ppo_loss, 1)(actor_state.params, critic_state.params, traj_batch)
 
-                    def hypergrad():
-                        _, unflatten_fn = jax.flatten_util.ravel_pytree(critic_state.params)
-                        """Time-efficient Nystrom"""
-                        def nystrom_hvp(rank, rho):
-                            # Use critic_p or critic_state.params?
-                            in_out_g = jax.grad(ppo_loss, argnums=1)(actor_state.params, critic_state.params, traj_batch)
-                            param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
-                            indices = jax.random.permutation(jax.random.PRNGKey(0), param_size)[:rank]
-                            def select_grad_row(in_params, indices):
-                                grad = jax.grad(lambda params: critic_target_loss(params, traj_batch, targets))(in_params)
-                                grad_flat, _ = jax.flatten_util.ravel_pytree(grad)
-                                return grad_flat[indices]
-                            hessian_rows = jax.jacrev(select_grad_row)(critic_state.params, indices)
-                            hessian_rows_flat, _ = jax.flatten_util.ravel_pytree(hessian_rows)
-                            C = jnp.reshape(hessian_rows_flat, (rank, -1))
-                            M = C.take(indices, axis=1)
-                            v_flat, _ = jax.flatten_util.ravel_pytree(in_out_g)
-                            x = (1 / (rho )) * v_flat - (1 / ((rho ) ** 2)) * C.T @ jax.scipy.linalg.solve(M + (1 / rho) * C @ C.T +  jnp.eye(M.shape[0]), C @ v_flat)
-                            return x
-                        # """Space-efficient Nystrom"""
-                        # def nystrom_se(rnak, rho):
-                        #     out_in_g = jax.grad(critic_target_loss, argnums=1)(actor_state.params, critic_state.params, traj_batch)
-                        #     param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
-                                                   
-                        # compute the ihvp using nystrom
-                        inverse_hvp_flat = nystrom_hvp(config["nystrom_rank"], config["nystrom_rho"])
-                        inverse_hvp = unflatten_fn(inverse_hvp_flat)
-                        def mixed_grad_fn(policy_params, critic_params):
-                            return jax.grad(leader_f2_loss)(policy_params, critic_params, traj_batch, targets)
-                        _, final_product = jax.jvp(
-                            lambda p: mixed_grad_fn(actor_state.params, p),
-                            (critic_state.params,),
-                            (inverse_hvp,)
-                        )
-                        # bound the final_product
-                        grad_theta_J_norm = optax.global_norm(grad_theta_J)
-                        final_product_norm = optax.global_norm(final_product)
-                        max_norm = config["IHVP_BOUND"] * grad_theta_J_norm
-                        scaling_factor = jnp.minimum(1.0, max_norm/(final_product_norm + 1e-8))
-                        clipped_final_product = jax.tree_util.tree_map( lambda fp: fp * scaling_factor, final_product)
+                    # jax.debug.print(f"lambda reg is {lambda_reg}")
+                    def hvp(v):
+                        critic_params_flat, unravel_fn = jax.flatten_util.ravel_pytree(critic_state.params)
+                        def loss_grad_flat(p):
+                            return jax.flatten_util.ravel_pytree(
+                                jax.grad(critic_target_loss, argnums=0)(unravel_fn(p), traj_batch, targets)
+                            )[0]
+                        hvp = jax.jvp(loss_grad_flat, (critic_params_flat,), (v,))[1] + config["lambda_reg"] * v
+                        return hvp
+                    
+                    grad_w_J_flat, unflatten_fn = jax.flatten_util.ravel_pytree(grad_w_J)
+                    def cg_solve(v):
+                        return jax.scipy.sparse.linalg.cg(hvp, v, maxiter=20, tol=1e-10)[0]
+                    inverse_hvp_flat = cg_solve(grad_w_J_flat)
+                    inverse_hvp = unflatten_fn(inverse_hvp_flat)
 
-                        hypergradient = jax.tree_util.tree_map(lambda x, y: x - y, grad_theta_J, clipped_final_product)
+                    # 6. Compute mixed gradient and its transpose: [∇²_θ,ν V_s(ν, θ*(ν))]^T
+                    def mixed_grad_fn(policy_params, critic_params):
+                        return jax.grad(leader_f2_loss)(policy_params, critic_params, traj_batch, targets)
 
-                        hypergradient_norms = optax.global_norm(hypergradient)
-                        final_product_norms = optax.global_norm(final_product)
-                        co_sim = cosine_similarity(final_product, grad_theta_J)
-                        return (hypergradient, hypergradient_norms, final_product_norms, co_sim)
-                    total_gradient, hypergradient_norms, final_product_norms, co_sim = hypergrad()
+                    # 7. Compute the final product: [∇²_θ,ν V_s(ν, θ*(ν))]^T * [∇²_θ V_s(ν, θ*(ν))]^(-1) * ∇_θ L_pref(ν)
+                    # We use JVP to compute this product efficiently
+                    _, final_product = jax.jvp(
+                        lambda p: mixed_grad_fn(actor_state.params, p),
+                        (critic_state.params,),
+                        (inverse_hvp,)
+                    )
+                    
+                    # projection 
+                    # final_product = project_B_onto_A(grad_theta_J, final_product)
 
-                    actor_state = actor_state.apply_gradients(grads=total_gradient)
+                    # vanilla = True
+                    # final_product = clip_grad_norm(final_product, 0.2*optax.global_norm(grad_theta_J))
+                    # bound the final_product
+                    grad_theta_J_norm = optax.global_norm(grad_theta_J)
+                    final_product_norm = optax.global_norm(final_product)
+                    max_norm = config["IHVP_BOUND"] * grad_theta_J_norm
+                    scaling_factor = jnp.minimum(1.0, max_norm/(final_product_norm + 1e-8))
+                    clipped_final_product = jax.tree_util.tree_map(lambda fp: fp * scaling_factor, final_product)
+
+                    hypergradient = jax.tree_util.tree_map(lambda x, y: x - y, grad_theta_J, clipped_final_product)
+                    actor_state = actor_state.apply_gradients(grads=hypergradient)
 
                     total_loss = actor_loss + critic_loss
                     train_state = (actor_state, critic_state)

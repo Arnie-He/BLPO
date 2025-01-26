@@ -2,7 +2,7 @@ import argparse
 import jax
 import os
 
-from Stackelberg_RL.continuous import cg_ppo, nystrom_ppo
+from Stackelberg_RL.continuous import CG_ppo, nystrom_ppo
 from Baselines import PJax_PPO_continuous
 from Stackelberg_RL.continuous.archived import natural_ppo
 
@@ -67,7 +67,7 @@ def main():
 
     algos = {
         "nystrom": (natural_ppo, nystrom_config),
-        "cg": (cg_ppo, cg_config),
+        "cg": (CG_ppo, cg_config),
         "ppo": (PJax_PPO_continuous, ppo_config),
         "test": (nystrom_ppo, nystrom_config),
     }

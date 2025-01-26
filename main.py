@@ -2,9 +2,8 @@ import argparse
 import jax
 import os
 
-from Stackelberg_RL.discrete import nystrom_preconditioned_cg
+from Stackelberg_RL.discrete import dis_CG_ppo, nystrom_preconditioned_cg, dis_nystrom_ppo, dis_nested_ppo
 from Baselines import PJax_PPO
-from Stackelberg_RL.discrete import CG_ppo, nystrom_ppo
 
 task_dict = {
     "cartpole": "CartPole-v1",
@@ -17,7 +16,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cpu", type=bool, default = False, help = "Run on CPU")
     parser.add_argument("--task", type=str, default = "cartpole") #### Specify the task
-    parser.add_argument("--vanilla", type=bool, default = False) #### Specify if using nested
     parser.add_argument("--seed", type=int, default=30)
     parser.add_argument("--algo", type=str, default="nystrom") #### Specify the algo
     parser.add_argument("--rank", type=int, default=5)
@@ -62,10 +60,10 @@ def main():
     nested_shared_config = shared_config | {
         "actor-LR": 2.5e-4,
         "critic-LR" : 1e-3, 
+
         "nested_updates": args.nested,
+        "CLIP_F": args.clipf,
         "IHVP_BOUND": args.ihvp_bound,
-        "vanilla": args.vanilla,
-        "CLIP_F": args.clipf
     }
     nystrom_config = nested_shared_config | { 
         "nystrom_rank": args.rank,
@@ -76,9 +74,12 @@ def main():
     }
 
     algos = {
-        "nystrom": (nystrom_ppo, nystrom_config),
-        "cg": (CG_ppo, cg_config),
+        "nystrom": (dis_nystrom_ppo, nystrom_config),
+        "nested": (dis_nested_ppo, nested_shared_config),
+        "cg": (dis_CG_ppo, cg_config),
         "ppo": (PJax_PPO, ppo_config),
+
+        # Later
         "npcg": (nystrom_preconditioned_cg, nystrom_config)
     }
 

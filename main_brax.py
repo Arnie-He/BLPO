@@ -2,7 +2,7 @@ import argparse
 import jax
 import os
 
-from Stackelberg_RL.continuous import cg_ppo, nystrom_ppo
+from Stackelberg_RL.continuous import CG_ppo, nystrom_ppo, nested_ppo
 from Baselines import PJax_PPO_continuous
 from Stackelberg_RL.continuous.archived import natural_ppo
 
@@ -11,7 +11,6 @@ def main():
     parser.add_argument("--cpu", type=bool, default = False, help = "Run on CPU")
     # @param ['ant', 'halfcheetah', 'hopper', 'humanoid', 'humanoidstandup', 'inverted_pendulum', 'inverted_double_pendulum', 'pusher', 'reacher', 'walker2d']
     parser.add_argument("--task", type=str, default = "hopper")
-    parser.add_argument("--vanilla", type=bool, default = False)
     parser.add_argument("--seed", type=int, default=30)
     parser.add_argument("--algo", type=str, default="nystrom")
     parser.add_argument("--rank", type=int, default=5)
@@ -56,14 +55,14 @@ def main():
     nested_shared_config = shared_config | {
         "actor-LR": 3e-4,
         "critic-LR" : 1.2e-3, 
+
         "nested_updates": args.nested,
+        "CLIP_F": args.clipf,
         "IHVP_BOUND": args.ihvp,
-        "vanilla": args.vanilla,
     }   
     nystrom_config = nested_shared_config | { 
         "nystrom_rank": args.rank,
         "nystrom_rho": args.rho,
-        "CLIP_F": args.clipf
     }
     cg_config = nested_shared_config | {
         "lambda_reg": args.lam,
@@ -71,8 +70,11 @@ def main():
 
     algos = {
         "nystrom": (nystrom_ppo, nystrom_config),
-        "cg": (cg_ppo, cg_config),
+        "nested": (nested_ppo, nested_shared_config),
+        "cg": (CG_ppo, cg_config),
         "ppo": (PJax_PPO_continuous, ppo_config),
+
+        # later.
         "natural": (natural_ppo, nystrom_config),
     }
 

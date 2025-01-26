@@ -40,7 +40,7 @@ def make_train(config):
     initialize_config(cfg=config)
 
     ### Weight and Bias Setup ###
-    group_name = f'{config["Group"]}_{config["ENV_NAME"]}_Nystrom'
+    group_name = f'{config["Group"]}_{config["ENV_NAME"]}_Nested'
     wandb.init(project="HyperGradient-RL", group=group_name, name=run_name(config), config = config)
     wandb.define_metric("Reward", summary="mean")
 
@@ -52,21 +52,6 @@ def make_train(config):
     if config["NORMALIZE_ENV"]:
         env = NormalizeVecObservation(env)
         env = NormalizeVecReward(env, config["GAMMA"])
-    
-    def actor_linear_schedule(count):
-        frac = (
-            1.0
-            - (count // (config["NUM_MINIBATCHES"] * config["UPDATE_EPOCHS"]))
-            / config["NUM_UPDATES"]
-        )
-        return config["actor-LR"] * frac
-    def critic_linear_schedule(count):
-        frac = (
-            1.0
-            - (count // (config["NUM_MINIBATCHES"] * config["UPDATE_EPOCHS"]))
-            / config["NUM_UPDATES"]
-        )
-        return config["critic-LR"] * frac
 
     def train(rng):
         ### INIT NETWORK ###
@@ -78,14 +63,14 @@ def make_train(config):
         actor_state = TrainState.create(
             apply_fn = actor_network.apply,
             params = actor_params, 
-            tx = optax.adam(learning_rate=actor_linear_schedule if config["ANNEAL_LR"] else config["actor-LR"], eps=1e-5)
+            tx = optax.adam(learning_rate=config["actor-LR"], eps=1e-5),
         )
         critic_network = Critic(activation=config["ACTIVATION"])
         critic_params = critic_network.init(critic_rng, empty_observation)
         critic_state = TrainState.create(
             apply_fn = critic_network.apply, 
             params = critic_params, 
-            tx = optax.adam(learning_rate=critic_linear_schedule if config["ANNEAL_LR"] else config["critic-LR"], eps=1e-5)
+            tx = optax.adam(learning_rate=config["critic-LR"], eps=1e-5),
         )
         
         ### Parraleled Environments ###
@@ -182,7 +167,6 @@ def make_train(config):
                         clipped_losses = clipped_ratios * advantages
 
                         ppo_losses = jnp.minimum(advantage_losses, clipped_losses)
-
                         return -jnp.mean(ppo_losses)
                     
                     def critic_target_loss(params, transitions, targets):
@@ -190,82 +174,16 @@ def make_train(config):
                         values = jax.vmap(critic_network.apply, in_axes=(None, 0))(params, transitions.obs)
                         errors = jnp.square(targets - values)
                         return jnp.mean(errors)
-                    
-                    def leader_f2_loss(actor_params, critic_params, transitions, targets):
-                        advantages, _ = calculate_gae(critic_params, traj_batch, last_obs)
 
-                        action_dists = actor_network.apply(actor_params, transitions.obs)
-                        log_probs = action_dists.log_prob(transitions.action)
-                        prob_ratios = jnp.exp(log_probs - transitions.log_prob)
-
-                        advantage_losses = prob_ratios * advantages
-                        clipped_ratios = jnp.clip(prob_ratios, 1 - config["CLIP_F"], 1 + config["CLIP_F"])
-                        clipped_losses = clipped_ratios * advantages
-
-                        ppo_losses = jnp.minimum(advantage_losses, clipped_losses)
-                        values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, transitions.obs)
-                        
-                        return 2 * -jnp.mean(jnp.dot(ppo_losses, (targets - values)))
-
-                     ### Update the critic state for several epochs ###
+                    ### Update the critic state for several epochs ###
                     for _ in range(config["nested_updates"]):
                         critic_loss, critic_grad = jax.value_and_grad(critic_target_loss)(critic_state.params, traj_batch, targets)
                         critic_state = critic_state.apply_gradients(grads=critic_grad)
-
+                    
                     ### update actor for 1 times ###
                     actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_state.params, traj_batch)
-
-                    def hypergrad():
-                        _, unflatten_fn = jax.flatten_util.ravel_pytree(critic_state.params)
-                        """Time-efficient Nystrom"""
-                        def nystrom_hvp(rank, rho):
-                            # Use critic_p or critic_state.params?
-                            in_out_g = jax.grad(ppo_loss, argnums=1)(actor_state.params, critic_state.params, traj_batch)
-                            param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
-                            indices = jax.random.permutation(jax.random.PRNGKey(0), param_size)[:rank]
-                            def select_grad_row(in_params, indices):
-                                grad = jax.grad(lambda params: critic_target_loss(params, traj_batch, targets))(in_params)
-                                grad_flat, _ = jax.flatten_util.ravel_pytree(grad)
-                                return grad_flat[indices]
-                            hessian_rows = jax.jacrev(select_grad_row)(critic_state.params, indices)
-                            hessian_rows_flat, _ = jax.flatten_util.ravel_pytree(hessian_rows)
-                            C = jnp.reshape(hessian_rows_flat, (rank, -1))
-                            M = C.take(indices, axis=1)
-                            v_flat, _ = jax.flatten_util.ravel_pytree(in_out_g)
-                            x = (1 / (rho )) * v_flat - (1 / ((rho ) ** 2)) * C.T @ jax.scipy.linalg.solve(M + (1 / rho) * C @ C.T +  jnp.eye(M.shape[0]), C @ v_flat)
-                            return x
-                        # """Space-efficient Nystrom"""
-                        # def nystrom_se(rnak, rho):
-                        #     out_in_g = jax.grad(critic_target_loss, argnums=1)(actor_state.params, critic_state.params, traj_batch)
-                        #     param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
-                                                   
-                        # compute the ihvp using nystrom
-                        inverse_hvp_flat = nystrom_hvp(config["nystrom_rank"], config["nystrom_rho"])
-                        inverse_hvp = unflatten_fn(inverse_hvp_flat)
-                        def mixed_grad_fn(policy_params, critic_params):
-                            return jax.grad(leader_f2_loss)(policy_params, critic_params, traj_batch, targets)
-                        _, final_product = jax.jvp(
-                            lambda p: mixed_grad_fn(actor_state.params, p),
-                            (critic_state.params,),
-                            (inverse_hvp,)
-                        )
-                        # bound the final_product
-                        grad_theta_J_norm = optax.global_norm(grad_theta_J)
-                        final_product_norm = optax.global_norm(final_product)
-                        max_norm = config["IHVP_BOUND"] * grad_theta_J_norm
-                        scaling_factor = jnp.minimum(1.0, max_norm/(final_product_norm + 1e-8))
-                        clipped_final_product = jax.tree_util.tree_map( lambda fp: fp * scaling_factor, final_product)
-
-                        hypergradient = jax.tree_util.tree_map(lambda x, y: x - y, grad_theta_J, clipped_final_product)
-
-                        hypergradient_norms = optax.global_norm(hypergradient)
-                        final_product_norms = optax.global_norm(final_product)
-                        co_sim = cosine_similarity(final_product, grad_theta_J)
-                        return (hypergradient, hypergradient_norms, final_product_norms, co_sim)
-                    total_gradient, hypergradient_norms, final_product_norms, co_sim = hypergrad()
-
-                    actor_state = actor_state.apply_gradients(grads=total_gradient)
-
+                    actor_state = actor_state.apply_gradients(grads=grad_theta_J)
+                    
                     total_loss = actor_loss + critic_loss
                     train_state = (actor_state, critic_state)
                     return train_state, total_loss
@@ -291,13 +209,6 @@ def make_train(config):
                 minibatches = jax.tree_util.tree_map(
                     lambda x: jnp.take(x, permutation, axis=0), batch
                 )
-
-                # TJB, ADV, TAR, LOBS = minibatches
-                # jax.debug.print("##################################")
-                # # jax.debug.print("advantage norm is {}", optax.global_norm(advantages))
-                # lllllllllllladv = calculate_gae(critic_state.params, TJB, LOBS)
-                # jax.debug.print("lllllllllllladv is {}", optax.global_norm(lllllllllllladv))
-                # jax.debug.print("##################################")
 
                 train_state = (actor_state, critic_state)
                 train_state, total_loss = jax.lax.scan(
