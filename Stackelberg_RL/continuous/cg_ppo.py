@@ -53,6 +53,21 @@ def make_train(config):
         env = NormalizeVecObservation(env)
         env = NormalizeVecReward(env, config["GAMMA"])
 
+    def actor_linear_schedule(count):
+        frac = (
+            1.0
+            - (count // (config["NUM_MINIBATCHES"] * config["UPDATE_EPOCHS"]))
+            / config["NUM_UPDATES"]
+        )
+        return config["actor-LR"] * frac
+    def critic_linear_schedule(count):
+        frac = (
+            1.0
+            - (count // (config["NUM_MINIBATCHES"] * config["UPDATE_EPOCHS"]))
+            / config["NUM_UPDATES"]
+        )
+        return config["critic-LR"] * frac
+
     def train(rng):
         ### INIT NETWORK ###
         rng, actor_rng, critic_rng = jax.random.split(rng, 3)
@@ -63,14 +78,14 @@ def make_train(config):
         actor_state = TrainState.create(
             apply_fn = actor_network.apply,
             params = actor_params, 
-            tx = optax.adam(learning_rate=config["actor-LR"], eps=1e-5),
+            tx = optax.adam(learning_rate=actor_linear_schedule if config["ANNEAL_LR"] else config["actor-LR"], eps=1e-5)
         )
         critic_network = Critic(activation=config["ACTIVATION"])
         critic_params = critic_network.init(critic_rng, empty_observation)
         critic_state = TrainState.create(
             apply_fn = critic_network.apply, 
             params = critic_params, 
-            tx = optax.adam(learning_rate=config["critic-LR"], eps=1e-5),
+            tx = optax.adam(learning_rate=critic_linear_schedule if config["ANNEAL_LR"] else config["critic-LR"], eps=1e-5)
         )
         
         ### Parraleled Environments ###
@@ -162,6 +177,7 @@ def make_train(config):
                         clipped_losses = clipped_ratios * advantages
 
                         ppo_losses = jnp.minimum(advantage_losses, clipped_losses)
+
                         return -jnp.mean(ppo_losses)
                     
                     def critic_target_loss(params, transitions, targets):

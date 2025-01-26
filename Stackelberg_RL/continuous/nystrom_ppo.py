@@ -52,6 +52,21 @@ def make_train(config):
     if config["NORMALIZE_ENV"]:
         env = NormalizeVecObservation(env)
         env = NormalizeVecReward(env, config["GAMMA"])
+    
+    def actor_linear_schedule(count):
+        frac = (
+            1.0
+            - (count // (config["NUM_MINIBATCHES"] * config["UPDATE_EPOCHS"]))
+            / config["NUM_UPDATES"]
+        )
+        return config["actor-LR"] * frac
+    def critic_linear_schedule(count):
+        frac = (
+            1.0
+            - (count // (config["NUM_MINIBATCHES"] * config["UPDATE_EPOCHS"]))
+            / config["NUM_UPDATES"]
+        )
+        return config["critic-LR"] * frac
 
     def train(rng):
         ### INIT NETWORK ###
@@ -63,14 +78,14 @@ def make_train(config):
         actor_state = TrainState.create(
             apply_fn = actor_network.apply,
             params = actor_params, 
-            tx = optax.adam(learning_rate=config["actor-LR"], eps=1e-5),
+            tx = optax.adam(learning_rate=actor_linear_schedule if config["ANNEAL_LR"] else config["actor-LR"], eps=1e-5)
         )
         critic_network = Critic(activation=config["ACTIVATION"])
         critic_params = critic_network.init(critic_rng, empty_observation)
         critic_state = TrainState.create(
             apply_fn = critic_network.apply, 
             params = critic_params, 
-            tx = optax.adam(learning_rate=config["critic-LR"], eps=1e-5),
+            tx = optax.adam(learning_rate=critic_linear_schedule if config["ANNEAL_LR"] else config["critic-LR"], eps=1e-5)
         )
         
         ### Parraleled Environments ###
@@ -153,15 +168,6 @@ def make_train(config):
                     actor_state, critic_state = train_state 
                     traj_batch, advantages, targets, last_obs = batch_info
 
-                    # in_gae, _ = calculate_gae(critic_p, traj_batch, last_obs)
-                    # copied_gae, _ = calculate_gae(critic_state.params, traj_batch, last_obs)
-                    # gae_norm = optax.global_norm(advantages)
-                    # in_gae_norm = optax.global_norm(in_gae)
-                    # jax.debug.print("traj_batch shape is {}", traj_batch.obs.shape)
-                    # jax.debug.print("out is {} while in is {}, copied is {}", gae_norm, in_gae_norm, optax.global_norm(copied_gae))
-                    # jax.debug.print("in gae shape {}", in_gae.shape)
-                    # jax.debug.print("out gae shape {}", advantages.shape)
-
                     ############ Define loss functions ##############
                     def ppo_loss(actor_params, critic_params, transitions):
                         """Calculates the clipped advantage estimator on a batch of transitions."""
@@ -176,6 +182,7 @@ def make_train(config):
                         clipped_losses = clipped_ratios * advantages
 
                         ppo_losses = jnp.minimum(advantage_losses, clipped_losses)
+
                         return -jnp.mean(ppo_losses)
                     
                     def critic_target_loss(params, transitions, targets):

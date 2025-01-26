@@ -23,7 +23,7 @@ done
 
 
 for seed in "${seeds[@]}"; do
-    env_name="halfcheetah"
+    env_name="hopper"
     echo "Running task=$env_name with seed=$seed"
     # Nystrom1
     python main_brax.py --task=$env_name --nested=5 --steps=8e6 --seed=$seed
