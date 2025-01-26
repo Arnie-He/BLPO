@@ -24,11 +24,11 @@ for seed in "${seeds[@]}"; do
     env_name="hopper"
     echo "Running task=$env_name with seed=$seed"
     # Vanilla
-    python main_brax.py --task=$env_name --seed=$seed --algo=ppo --steps=2e7
+    python main_brax.py --task=$env_name --seed=$seed --algo=ppo --steps=1.2e7
     # Nested
-    python main_brax.py --task=$env_name --seed=$seed --algo=nested --steps=2e7 --nested=3 
+    python main_brax.py --task=$env_name --seed=$seed --algo=nested --steps=1.2e7 --nested=3 
     # CG
-    python main_brax.py --task=$env_name  --seed=$seed --algo=cg --steps=2e7 --nested=3 --ihvp=0.8 --clipf=0.84
+    python main_brax.py --task=$env_name  --seed=$seed --algo=cg --steps=1.2e7 --nested=3 --ihvp=0.8 --clipf=0.84
     # Nystrom1
-    python main_brax.py --task=$env_name --seed=$seed --algo=nystrom --steps=2e7 --nested=3 --ihvp=0.8 --clipf=0.84
+    python main_brax.py --task=$env_name --seed=$seed --algo=nystrom --steps=1.2e7 --nested=3 --ihvp=0.8 --clipf=0.84
 done
