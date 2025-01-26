@@ -29,7 +29,7 @@ sweep_config_CartPole = {
         "ENV_NAME": {"value": "CartPole-v1"},  # Fixed value
         "NUM_ENVS": {"value": 32},  # Fixed value
         "NUM_STEPS": {"value": 640},  # Fixed value
-        "TOTAL_TIMESTEPS": {"value": 2e7},  # Fixed value
+        "TOTAL_TIMESTEPS": {"value": 5e5},  # Fixed value
         "UPDATE_EPOCHS": {"value": 4},  # Fixed value
         "NUM_MINIBATCHES": {"value": 32},  # Fixed value
         "GAMMA": {"value": 0.99},  # Fixed value
@@ -66,7 +66,7 @@ sweep_config_Acrobot = {
         "ENV_NAME": {"value": "Acrobot"},  # Fixed value
         "NUM_ENVS": {"value": 32},  # Fixed value
         "NUM_STEPS": {"value": 640},  # Fixed value
-        "TOTAL_TIMESTEPS": {"value": 2e7},  # Fixed value
+        "TOTAL_TIMESTEPS": {"value": 5e5},  # Fixed value
         "UPDATE_EPOCHS": {"value": 4},  # Fixed value
         "NUM_MINIBATCHES": {"value": 32},  # Fixed value
         "GAMMA": {"value": 0.99},  # Fixed value
@@ -95,10 +95,10 @@ sweep_config_Acrobot = {
     },
 }
 
-# Initialize the sweep
-sweep_id = wandb.sweep(sweep=sweep_config_CartPole, project="HyperGradient-RL")
-# Run the sweep
-wandb.agent(sweep_id, function=main, count=20)
+# # Initialize the sweep
+# sweep_id = wandb.sweep(sweep=sweep_config_CartPole, project="HyperGradient-RL")
+# # Run the sweep
+# wandb.agent(sweep_id, function=main, count=20)
 
 # Initialize the sweep
 sweep_id = wandb.sweep(sweep=sweep_config_Acrobot, project="HyperGradient-RL")
