@@ -91,7 +91,7 @@ sweep_config_Acrobot = {
         "nystrom_rho": {"value": 50},  # Fixed value
 
         # Range parameter
-        "CLIP_F": {"values": [0.8, 1.0, 1.2]},  # Correct format
+        "CLIP_F": {"max": 1.4, "min": 0.8},  # Correct format
     },
 }
 

@@ -62,4 +62,4 @@ sweep_config = {
 sweep_id = wandb.sweep(sweep=sweep_config, project="HyperGradient-RL")
 
 # Run the sweep
-wandb.agent(sweep_id, function=main, count=10)
+wandb.agent(sweep_id, function=main, count=15)
