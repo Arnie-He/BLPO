@@ -24,6 +24,6 @@ for seed in "${seeds[@]}"; do
 
     # Loop through BEXP_NAME experiments
     for bexp_name in "${BEXP_NAME[@]}"; do
-        python main.py --algo=env --task=$bexp_name --steps=8e6 --group=pureenv --seed=$seed
+        python old_main_brax.py --algo=env --task=$bexp_name --steps=8e6 --group=pureenv --seed=$seed
     done
 done
