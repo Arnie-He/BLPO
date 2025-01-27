@@ -3,7 +3,7 @@ import jax
 import os
 
 from Stackelberg_RL.discrete import dis_CG_ppo, nystrom_preconditioned_cg, dis_nystrom_ppo, dis_nested_ppo
-from Baselines import PJax_PPO
+from Baselines import PJax_PPO, pure_env_discrete
 
 task_dict = {
     "cartpole": "CartPole-v1",
@@ -78,7 +78,7 @@ def main():
         "nested": (dis_nested_ppo, nested_shared_config),
         "cg": (dis_CG_ppo, cg_config),
         "ppo": (PJax_PPO, ppo_config),
-
+        "env": (pure_env_discrete, ppo_config),
         # Later
         "npcg": (nystrom_preconditioned_cg, nystrom_config)
     }

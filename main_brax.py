@@ -3,7 +3,7 @@ import jax
 import os
 
 from Stackelberg_RL.continuous import CG_ppo, nystrom_ppo, nested_ppo
-from Baselines import PJax_PPO_continuous
+from Baselines import PJax_PPO_continuous, pure_env_continuous
 from Stackelberg_RL.continuous.archived import natural_ppo
 
 def main():
@@ -73,7 +73,7 @@ def main():
         "nested": (nested_ppo, nested_shared_config),
         "cg": (CG_ppo, cg_config),
         "ppo": (PJax_PPO_continuous, ppo_config),
-
+        "env": (pure_env_continuous, ppo_config),
         # later.
         "natural": (natural_ppo, nystrom_config),
     }
