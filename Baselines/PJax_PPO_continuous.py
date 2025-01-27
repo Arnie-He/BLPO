@@ -203,8 +203,6 @@ def make_train(config):
                     lambda x: jnp.take(x, permutation, axis=0), batch
                 )
 
-
-
                 train_state, total_loss = jax.lax.scan(
                     _update_minbatch, train_state, minibatches
                 )
