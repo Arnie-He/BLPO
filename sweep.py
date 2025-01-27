@@ -26,7 +26,7 @@ sweep_config = {
     "metric": {"goal": "maximize", "name": "reward"}, 
     "parameters": {
         "SEED": {"value": 0},
-        "ENV_NAME": {"value": "humanoid"},  # Fixed value
+        "ENV_NAME": {"value": "inverted_double_pendulum"},  # Fixed value
         "NUM_ENVS": {"value": 32},  # Fixed value
         "NUM_STEPS": {"value": 640},  # Fixed value
         "TOTAL_TIMESTEPS": {"value": 2e7},  # Fixed value
@@ -59,7 +59,7 @@ sweep_config = {
 }
 
 # Initialize the sweep
-sweep_id = wandb.sweep(sweep=sweep_config, project="hopper-sweep")
+sweep_id = wandb.sweep(sweep=sweep_config, project="HyperGradient-RL")
 
 # Run the sweep
 wandb.agent(sweep_id, function=main, count=10)
