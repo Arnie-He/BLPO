@@ -1,2 +1,2 @@
-## Bi-Level Policy Optimization with Nyström Hypergradients
+# Bi-Level Policy Optimization with Nyström Hypergradients
 
