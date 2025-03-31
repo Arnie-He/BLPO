@@ -107,6 +107,15 @@ class DiscreteActor(nn.Module):
         )(actor_mean)
         pi = distrax.Categorical(logits=actor_mean)
 
+        # actor_mean = nn.Dense(
+        #     16, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+        # )(x)
+        # actor_mean = activation(actor_mean)
+        # actor_mean = nn.Dense(
+        #     self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)
+        # )(actor_mean)
+        # pi = distrax.Categorical(logits=actor_mean)
+
         return pi
     
 class ContinuousActor(nn.Module):
@@ -157,5 +166,13 @@ class Critic(nn.Module):
         critic = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))(
             critic
         )
+
+        # critic = nn.Dense(
+        #     16, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+        # )(x)
+        # critic = activation(critic)
+        # critic = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))(
+        #     critic
+        # )
 
         return jnp.squeeze(critic, axis=-1)

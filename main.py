@@ -2,7 +2,7 @@ import argparse
 import jax
 import os
 
-from Stackelberg_RL.discrete import dis_CG_ppo, nystrom_preconditioned_cg, dis_nystrom_ppo, dis_nested_ppo
+from BiLevel_RL.discrete import dis_CG_ppo, nystrom_preconditioned_cg, dis_nystrom_ppo, dis_nested_ppo
 from Baselines import PJax_PPO, pure_env_discrete
 
 task_dict = {

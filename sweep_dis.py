@@ -1,6 +1,6 @@
 import wandb
 import jax
-from Stackelberg_RL.discrete import dis_nystrom_ppo
+from BiLevel_RL.discrete import dis_nystrom_ppo
 
 # Define the main function that will be called by the wandb agent
 def main():
