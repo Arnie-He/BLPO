@@ -39,10 +39,6 @@ def make_train(config):
 
     initialize_config(cfg=config)
 
-    ### Weight and Bias Setup ###
-    group_name = f'{config["Group"]}_{config["ENV_NAME"]}_vannila'
-    wandb.init(project="HyperGradient-RL", group= group_name, name=run_name(config), config = config)
-
     ###Initialize Environment ###
     env, env_params = BraxGymnaxWrapper(config["ENV_NAME"]), None
     env = LogWrapper(env)
@@ -217,13 +213,11 @@ def make_train(config):
             metric = traj_batch.info
             rng = update_state[-1]
             if config.get("DEBUG"):
-
                 def callback(info):
                     return_values = info["returned_episode_returns"][info["returned_episode"]]
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
                     for t in range(len(timesteps)):
-                        # print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
-                        wandb.log({"Reward": return_values[t]}, step=timesteps[t])
+                        print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                 jax.debug.callback(callback, metric)
 
             runner_state = (train_state, env_state, last_obs, rng)

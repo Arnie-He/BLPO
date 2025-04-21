@@ -37,9 +37,6 @@ def make_train(config):
     env = FlattenObservationWrapper(env)
     env = LogWrapper(env)
 
-    ### Weight and Bias Setup ###
-    wandb.init(project="HyperGradient-RL", group=f'{config["Group"]}_{config["ENV_NAME"]}_vanilla', name=run_name(config), config = config)
-
     def linear_schedule(count):
         frac = (
             1.0
@@ -129,13 +126,6 @@ def make_train(config):
             
             _, traj_batch_values = jax.vmap(network.apply, in_axes=(None, 0))(train_state.params, traj_batch.obs)
             advantages, targets = _calculate_gae(traj_batch, last_val)
-
-            # jax.debug.print("traj_batch.obs shape {}", traj_batch.obs.shape)
-            # jax.debug.print("traj_batch.value shape {}", traj_batch_values.shape)
-            # jax.debug.print("last obs shape {}", last_obs.shape)
-            # jax.debug.print("obsv shape {}", obsv.shape)
-            # jax.debug.print("advantage shape {}", advantages.shape)
-
             # UPDATE NETWORK
             def _update_epoch(update_state, unused):
                 def _update_minbatch(train_state, batch_info):
@@ -228,8 +218,7 @@ def make_train(config):
                     return_values = info["returned_episode_returns"][info["returned_episode"]]
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
                     for t in range(len(timesteps)):
-                        # print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
-                        wandb.log({"Reward": return_values[t]}, step=timesteps[t])
+                        print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                 jax.debug.callback(callback, metric)
 
             runner_state = (train_state, env_state, last_obs, rng)

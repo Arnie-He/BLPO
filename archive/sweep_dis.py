@@ -1,6 +1,6 @@
 import wandb
 import jax
-from BiLevel_RL.discrete import dis_nystrom_ppo
+from BiLevel_RL.discrete import dis_nystrom
 
 # Define the main function that will be called by the wandb agent
 def main():
@@ -15,7 +15,7 @@ def main():
     rng = jax.random.PRNGKey(seed)
 
     # JIT the training function
-    train_jit = jax.jit(dis_nystrom_ppo.make_train(config))
+    train_jit = jax.jit(dis_nystrom.make_train(config))
 
     # Run the training
     out = train_jit(rng)

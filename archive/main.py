@@ -2,8 +2,8 @@ import argparse
 import jax
 import os
 
-from BiLevel_RL.discrete import dis_nystrom_ac
-from Baselines import actor_critic
+from BiLevel_RL.discrete import dis_CG, dis_nested, dis_nystrom, nystrom_preconditioned_cg
+from Baselines import PJax_PPO, pure_env_discrete
 
 task_dict = {
     "cartpole": "CartPole-v1",
@@ -38,11 +38,11 @@ def main():
 
         "SEED": args.seed,
 
-        "NUM_ENVS": 1,
+        "NUM_ENVS": 4,
         "NUM_STEPS": 128,
         "TOTAL_TIMESTEPS": int(args.steps),
-        "UPDATE_EPOCHS": 1,
-        "NUM_MINIBATCHES": 1,
+        "UPDATE_EPOCHS": 4,
+        "NUM_MINIBATCHES": 4,
         "GAMMA": 0.99,
         "GAE_LAMBDA": 0.95,
         "CLIP_EPS": args.clip,
@@ -74,8 +74,13 @@ def main():
     }
 
     algos = {
-        "nystrom": (dis_nystrom_ac, nystrom_config),
-        "nested": (actor_critic, nested_shared_config),
+        "nystrom": (dis_nystrom, nystrom_config),
+        "nested": (dis_nested, nested_shared_config),
+        "cg": (dis_CG, cg_config),
+        "ppo": (PJax_PPO, ppo_config),
+        "env": (pure_env_discrete, ppo_config),
+        # Later
+        "npcg": (nystrom_preconditioned_cg, nystrom_config)
     }
 
     algo, config = algos[args.algo]

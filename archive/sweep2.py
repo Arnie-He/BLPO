@@ -1,6 +1,6 @@
 import wandb
 import jax
-from BiLevel_RL.continuous import nystrom_ppo
+from archive import nystrom_ppo
 
 # Define the main function that will be called by the wandb agent
 def main():
