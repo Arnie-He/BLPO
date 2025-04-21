@@ -1,0 +1,86 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 10721541
+##  Job Name : run_brax_gn.sh
+##  Nodelist : gpu2003
+##      CPUs : 1
+##  Mem/Node : 65536 MB
+## Directory : /oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts
+##   Job Started : Tue Apr 15 02:44:31 PM EDT 2025
+###############################################################################
+cat: wandbkey.txt: No such file or directory
+/var/spool/slurmd/job10721541/slurm_script: line 21: venv10/bin/activate: No such file or directory
+Running task=walker2d with seed=0
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=walker2d with seed=10
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=walker2d with seed=20
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=walker2d with seed=30
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=walker2d with seed=40
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=humanoid with seed=0
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=humanoid with seed=10
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=humanoid with seed=20
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=humanoid with seed=30
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=humanoid with seed=40
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=pusher with seed=0
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=pusher with seed=10
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=pusher with seed=20
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=pusher with seed=30
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+Running task=pusher with seed=40
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory
+python: can't open file '/oscar/home/apraka15/arjun/hypergradient-rl/HyperGradient-RL/scripts/main_brax.py': [Errno 2] No such file or directory

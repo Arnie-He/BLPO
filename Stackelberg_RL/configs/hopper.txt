@@ -1,0 +1,18 @@
+"NUM_ENVS": 32,
+        "NUM_STEPS": 640,
+        "TOTAL_TIMESTEPS": 5e6,
+        "UPDATE_EPOCHS": 4,
+        "NUM_MINIBATCHES": 32,
+        "GAMMA": 0.99367,
+        "GAE_LAMBDA": 0.99234,
+        "CLIP_EPS": 0.39485,
+        "ACTIVATION": "sigmoid",
+        "ANNEAL_LR": False,
+        "NORMALIZE_ENV": True,
+        "DEBUG": True,
+        "actor-LR": 0.00072992, #might be too high 2.5e-4 ior 3e-4 is typical
+        "critic-LR": 0.0025241, # same as actor for non-nested
+
+        "nystrom_rank": 2,
+        "nystrom_rho": 1.0,
+        "IHVP_BOUND": 0.1276,

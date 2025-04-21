@@ -1,5 +1,25 @@
 #!/bin/bash
 
+#SBATCH --output=slurm_logs/wandb_%j.out # Standard output log
+#SBATCH -N 1
+#SBATCH --ntasks=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --time=8:30:00
+#SBATCH --mem=64GB
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:1
+  
+
+# Load Python module
+
+module load python/3.11
+export PYTHONPATH=$(pwd):$PYTHONPATH
+
+# Get the API key for WandB
+API_KEY=$(cat wandbkey.txt)
+# Activate the Python virtual environment
+source venv10/bin/activate
+
 # run.sh
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
