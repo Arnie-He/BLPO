@@ -5,3 +5,4 @@ runs_old/
 jax.venv/
 .venv/
 .DS_Store
+slurm_logs/
