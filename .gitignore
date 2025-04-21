@@ -4,3 +4,4 @@ runs/
 runs_old/
 jax.venv/
 .venv/
+.DS_Store
