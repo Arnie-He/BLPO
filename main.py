@@ -1,10 +1,11 @@
 import argparse
+from archive import cgcriticp, nystrom_criticp
 import jax
 import os
 import numpy as np
 import wandb
 
-from BiLevel_RL.continuous import CG, nested, nystrom, nystrom_criticp, cgcriticp
+from BiLevel_RL.continuous import CG, nested, nystrom
 from BiLevel_RL.discrete import dis_CG, dis_nested, dis_nystrom
 from Baselines import PJax_PPO_continuous, pure_env_continuous, PJax_PPO
 from config import env_config
@@ -71,7 +72,7 @@ def main():
         ### Weight and Bias Setup ###
         group_name = f'{algo_config["ENV_NAME"]}_{args.algo}_{args.group_ver}'
         run_name = f'{algo_config["ENV_NAME"]}_{args.algo}_Seed{rngs[s]}'
-        wandb.init(project="HyperGradient-RL", group=group_name, name=run_name, config = algo_config)
+        wandb.init(project="Neurlips-BLPO", group=group_name, name=run_name, config = algo_config)
         wandb.define_metric("Reward", summary="mean")
         num_updates = metrics["returned_episode"].shape[0]
         for u in range(num_updates):
