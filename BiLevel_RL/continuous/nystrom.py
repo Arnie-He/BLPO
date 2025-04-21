@@ -154,9 +154,9 @@ def make_train(config):
             advantages, targets = calculate_gae(critic_state.params, traj_batch, last_obs)
             # adv_only = lambda p: calculate_gae(p, traj_batch, last_obs)[0]
             # grad_w_adv = jax.grad(adv_only)(critic_state.params)
-            critic_p = jax.tree_util.tree_map(
-                    lambda x: jnp.copy(x), jax.lax.stop_gradient(critic_state.params)
-                )
+            # critic_p = jax.tree_util.tree_map(
+            #         lambda x: jnp.copy(x), jax.lax.stop_gradient(critic_state.params)
+            #     )
             # UPDATE NETWORK
             def _update_epoch(update_state, unused):
                 def _update_minbatch(train_state, batch_info):

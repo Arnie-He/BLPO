@@ -151,6 +151,10 @@ def make_train(config):
             
             actor_state, critic_state, env_state, last_obs, rng = runner_state
             advantages, targets = calculate_gae(critic_state.params, traj_batch, last_obs)
+            
+            critic_p = jax.tree_util.tree_map(
+                    lambda x: jnp.copy(x), jax.lax.stop_gradient(critic_state.params)
+                )
 
             # UPDATE NETWORK
             def _update_epoch(update_state, unused):
@@ -161,7 +165,7 @@ def make_train(config):
                     ############ Define loss functions ##############
                     def ppo_loss(actor_params, critic_params, transitions):
                         """Calculates the clipped advantage estimator on a batch of transitions."""
-                        advantages, _ = calculate_gae(critic_params, transitions, last_obs)
+                        advantages, _ = calculate_gae(critic_params, traj_batch, last_obs)
 
                         action_dists = actor_network.apply(actor_params, transitions.obs)
                         log_probs = action_dists.log_prob(transitions.action)
@@ -211,7 +215,7 @@ def make_train(config):
                         critic_state = critic_state.apply_gradients(grads=critic_grad)
 
                     ### update actor for 1 time ###
-                    actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_state.params, traj_batch)
+                    actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_p, traj_batch)
                     grad_w_J = jax.grad(ppo_loss, 1)(actor_state.params, critic_state.params, traj_batch)
 
                     # jax.debug.print(f"lambda reg is {lambda_reg}")
@@ -238,7 +242,7 @@ def make_train(config):
                     # We use JVP to compute this product efficiently
                     _, final_product = jax.jvp(
                         lambda p: mixed_grad_fn(actor_state.params, p),
-                        (critic_state.params,),
+                        (critic_p,),
                         (inverse_hvp,)
                     )
                     

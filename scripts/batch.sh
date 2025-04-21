@@ -14,6 +14,14 @@
 module load python/3.11
 export PYTHONPATH=$(pwd):$PYTHONPATH
 source .venv/bin/activate
+###### algo = {nystrom, nested, cg, ppo}
+###### task = {cartpole, acrobot}, {walker2d, humanoid, humanoidstandup, inverted_pendulum, inverted_double_pendulum, pusher, hopper, reacher}
 
-python main_brax.py --task=walker2d --algo=nystrom
-python main_brax.py --task=walker2d --algo=ppo
+
+# python main.py --task=walker2d --algo=nystrom --group_ver=April20
+# python main.py --task=walker2d --algo=ppo --group_ver=April20
+# python main.py --task=walker2d --algo=nested --group_ver=April20
+# python main.py --task=walker2d --algo=cg --group_ver=April20
+
+python main.py --task=walker2d --algo=nested --group_ver=criticp_April20
+# python main.py --task=walker2d --algo=cgcriticp --group_ver=criticp_April20
