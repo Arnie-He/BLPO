@@ -13,11 +13,19 @@
 
 module load python/3.11
 export PYTHONPATH=$(pwd):$PYTHONPATH
-source .venv/bin/activate
+
+# Get the API key for WandB
+API_KEY=$(cat wandbkey.txt)
+# Activate the Python virtual environment
+source venv10/bin/activate
+
+# run.sh
+export PYTHONPATH=$(pwd):$PYTHONPATH
+
 ###### algo = {nystrom, nested, cg, ppo}
 ###### task = {cartpole, acrobot}, {$task, humanoid, humanoidstandup, inverted_pendulum, inverted_double_pendulum, pusher, hopper, reacher}
 
-task="walker2d" 
+task="humanoid" 
 group_ver="April21"
 
 python main.py --task=$task --algo=anneal_nystrom --group_ver=$group_ver

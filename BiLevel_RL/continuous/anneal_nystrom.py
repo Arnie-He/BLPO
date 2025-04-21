@@ -247,7 +247,7 @@ def make_train(config):
                         )
 
                         # bound the final_product
-                        def get_decay_value(t, N=config["NUM_UPDATES"], start=config["IHVP_BOUND"], end=0.15, alpha=1.0):
+                        def get_decay_value(t, N=config["NUM_UPDATES"], start=config["IHVP_BOUND"], end=0.15, alpha=0.5):
                             frac = (t / (N - 1)) ** alpha
                             return start * (end / start) ** frac
                         
@@ -266,7 +266,7 @@ def make_train(config):
                     total_gradient, grad_theta_J_norm, final_product_norm, original_ratio = hypergrad(_rng)
                     actor_state = actor_state.apply_gradients(grads=total_gradient)
 
-                    train_state = (actor_state, critic_state, rng)
+                    train_state = (actor_state, critic_state, rng, step)
                     loss_info = (actor_loss, critic_loss, grad_theta_J_norm, final_product_norm, original_ratio)
 
                     return train_state, loss_info
