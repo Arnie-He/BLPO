@@ -11,7 +11,7 @@ from Baselines import PJax_PPO_continuous, pure_env_continuous, PJax_PPO
 from config import env_config
 
 dis_tasks = ["cartpole", "acrobot"]
-continuous_tasks = ["walker2d", "humanoid", "humanoidstandup", "inverted_pendulum", "inverted_double_pendulum", "pusher", "hopper", "reacher"]
+continuous_tasks = ["halfcheetah", "walker2d", "humanoid", "humanoidstandup", "inverted_pendulum", "inverted_double_pendulum", "pusher", "hopper", "reacher"]
 
 def main():
     parser = argparse.ArgumentParser()

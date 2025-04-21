@@ -23,7 +23,7 @@ source venv10/bin/activate
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
 ###### algo = {nystrom, nested, cg, ppo}
-###### task = {cartpole, acrobot}, {$task, humanoid, humanoidstandup, inverted_pendulum, inverted_double_pendulum, pusher, hopper, reacher}
+###### task = {cartpole, acrobot}, {walker2d, humanoid, humanoidstandup, inverted_pendulum, inverted_double_pendulum, pusher, hopper, reacher}
 
 task="walker2d" 
 group_ver="April21"

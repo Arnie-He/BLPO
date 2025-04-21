@@ -153,7 +153,7 @@ def make_train(config):
                     ############ Define loss functions ##############
                     def ppo_loss(actor_params, critic_params, transitions):
                         """Calculates the clipped advantage estimator on a batch of transitions."""
-                        advantages, _ = calculate_gae(critic_params, traj_batch, last_obs)
+                        advantages, _ = calculate_gae(critic_params, transitions, last_obs)
 
                         action_dists = jax.vmap(actor_network.apply, in_axes=(None, 0))(actor_params, transitions.obs)
                         log_probs = action_dists.log_prob(transitions.action)

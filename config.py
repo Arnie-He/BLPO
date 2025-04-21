@@ -294,11 +294,12 @@ env_config = {
         # CG Config
         "lambda_reg": 0.1,
     },
-    "halfcheetah": {
+    # 8
+    "inverted_pendulum": {
         "TOTAL_TIMESTEPS": 1.2e7,
 
         # General Config
-        "ENV_NAME": "inverted_double_pendulum",
+        "ENV_NAME": "inverted_pendulum",
         "NUM_ENVS": 32,
         "NUM_STEPS": 640,
         "UPDATE_EPOCHS": 4,
@@ -326,11 +327,12 @@ env_config = {
         # CG Config
         "lambda_reg": 0.1,
     },
+    # 9
     "reacher": {
         "TOTAL_TIMESTEPS": 8e6,
 
         # General Config
-        "ENV_NAME": "inverted_double_pendulum",
+        "ENV_NAME": "reacher",
         "NUM_ENVS": 32,
         "NUM_STEPS": 640,
         "UPDATE_EPOCHS": 4,
