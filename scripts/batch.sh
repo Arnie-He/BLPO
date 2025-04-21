@@ -15,7 +15,7 @@ module load python/3.11
 export PYTHONPATH=$(pwd):$PYTHONPATH
 source .venv/bin/activate
 ###### algo = {nystrom, nested, cg, ppo}
-###### task = {cartpole, acrobot}, {$task, humanoid, humanoidstandup, inverted_pendulum, inverted_double_pendulum, pusher, hopper, reacher}
+###### task = {cartpole, acrobot}, {walker2d, humanoid, humanoidstandup, inverted_pendulum, inverted_double_pendulum, pusher, hopper, reacher}
 
 task="walker2d" 
 group_ver="April21"

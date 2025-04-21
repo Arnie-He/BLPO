@@ -150,7 +150,7 @@ def make_train(config):
                     ############ Define loss functions ##############
                     def ppo_loss(actor_params, critic_params, transitions):
                         """Calculates the clipped advantage estimator on a batch of transitions."""
-                        advantages, _ = calculate_gae(critic_params, traj_batch, last_obs)
+                        advantages, _ = calculate_gae(critic_params, transitions, last_obs)
 
                         action_dists = jax.vmap(actor_network.apply, in_axes=(None, 0))(actor_params, transitions.obs)
                         log_probs = action_dists.log_prob(transitions.action)
@@ -221,7 +221,7 @@ def make_train(config):
 
                     # 6. Compute mixed gradient and its transpose: [∇²_θ,ν V_s(ν, θ*(ν))]^T
                     def mixed_grad_fn(policy_params, critic_params):
-                        return jax.grad(leader_f2_loss)(policy_params, critic_params, traj_batch)
+                        return jax.grad(leader_f2_loss)(policy_params, critic_params, traj_batch, targets)
 
                     # 7. Compute the final product: [∇²_θ,ν V_s(ν, θ*(ν))]^T * [∇²_θ V_s(ν, θ*(ν))]^(-1) * ∇_θ L_pref(ν)
                     # We use JVP to compute this product efficiently
