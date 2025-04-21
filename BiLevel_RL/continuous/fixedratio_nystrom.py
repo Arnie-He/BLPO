@@ -152,7 +152,7 @@ def make_train(config):
             
             actor_state, critic_state, env_state, last_obs, rng = runner_state
             advantages, targets = calculate_gae(critic_state.params, traj_batch, last_obs)
-
+            
             # UPDATE NETWORK
             def _update_epoch(update_state, unused):
                 def _update_minbatch(train_state, batch_info):
@@ -245,15 +245,16 @@ def make_train(config):
                             (inverse_hvp,)
                         )
 
-                        # bound the final_product
-                        grad_theta_J_norm = optax.global_norm(grad_theta_J)
-                        final_product_norm = optax.global_norm(final_product)
-                        original_ratio = final_product_norm / grad_theta_J_norm
-                        max_norm = config["IHVP_BOUND"] * grad_theta_J_norm
-                        scaling_factor = jnp.minimum(1.0, max_norm/(final_product_norm + 1e-8))
-                        clipped_final_product = jax.tree_util.tree_map(lambda fp: fp * scaling_factor, final_product)
+                        grad_theta_J_norm   = optax.global_norm(grad_theta_J)
+                        final_product_norm  = optax.global_norm(final_product) + 1e-8
+                        target_norm = config["IHVP_ratio"] * grad_theta_J_norm
+                        scaling_factor = target_norm / final_product_norm
+                        rescaled_final_product = jax.tree_util.tree_map(
+                            lambda fp: fp * scaling_factor,
+                            final_product
+                        )
 
-                        hypergradient = jax.tree_util.tree_map(lambda x, y: x - y, grad_theta_J, clipped_final_product)
+                        hypergradient = jax.tree_util.tree_map(lambda x, y: x - y, grad_theta_J, rescaled_final_product)
 
                         return (hypergradient, grad_theta_J_norm, final_product_norm, original_ratio)
                     
@@ -327,11 +328,6 @@ def make_train(config):
 
 
 if __name__ == "__main__":
-    # logging.basicConfig(filename='ppo.log', level=logging.INFO, format='%(message)s')
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("--vanilla", type=bool, default=True, help="Use Vanilla setting")
-    # args = parser.parse_args()
-
     # Original configuration
     config = {
         "NUM_ENVS": 32,

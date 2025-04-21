@@ -152,7 +152,11 @@ def make_train(config):
             
             actor_state, critic_state, env_state, last_obs, rng = runner_state
             advantages, targets = calculate_gae(critic_state.params, traj_batch, last_obs)
-
+            # adv_only = lambda p: calculate_gae(p, traj_batch, last_obs)[0]
+            # grad_w_adv = jax.grad(adv_only)(critic_state.params)
+            # critic_p = jax.tree_util.tree_map(
+            #         lambda x: jnp.copy(x), jax.lax.stop_gradient(critic_state.params)
+            #     )
             # UPDATE NETWORK
             def _update_epoch(update_state, unused):
                 def _update_minbatch(train_state, batch_info):
@@ -214,14 +218,47 @@ def make_train(config):
                     ### update actor for 1 times ###
                     actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_state.params, traj_batch)
 
+                    def compute_gn_diag_square(params, traj_batch):
+                        """
+                        Exact Gauss–Newton diagonal for the critic's scalar value network:
+                            diag_i = Σ_j (∂_{φ_i} f(obs_j; φ))²
+                        """
+                        # Per‑example gradient ∇_φ f(x_j)
+                        def per_sample_grad(obs):
+                            return jax.grad(lambda p: critic_network.apply(p, obs))(params)
+
+                        per_ex_grads = jax.vmap(per_sample_grad)(traj_batch.obs)   # leading batch axis
+
+                        # Square then sum over batch
+                        sq      = jax.tree_map(lambda g: jnp.square(g), per_ex_grads)
+                        diag_pt = jax.tree_map(lambda g: jnp.sum(g, axis=0), sq)
+
+                        # Flatten into a 1‑D vec
+                        diag_flat, _ = jax.flatten_util.ravel_pytree(diag_pt)
+
+                        #sqaure the elements of the diag_flat
+                        diag_flat_2 = jnp.square(diag_flat)
+                        return diag_flat_2        # shape (P,)
+
+
+                    def sample_indices_gn(params, traj_batch, rng, rank):
+                        diag_flat = compute_gn_diag_square(params, traj_batch)
+                        probs     = jnp.square(diag_flat)
+                        probs    /= jnp.sum(probs) + 1e-12           # guard against NaN
+                        return jax.random.choice(rng,
+                                                diag_flat.shape[0],
+                                                (rank,),
+                                                p=probs)
+
                     def hypergrad(_rng):
                         _, unflatten_fn = jax.flatten_util.ravel_pytree(critic_state.params)
                         """Time-efficient Nystrom"""
                         def nystrom_hvp(rank, rho):
                             # Use critic_p or critic_state.params?
                             in_out_g = jax.grad(ppo_loss, argnums=1)(actor_state.params, critic_state.params, traj_batch)
-                            param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
-                            indices = jax.random.permutation(_rng, param_size)[:rank]
+                            
+                            indices = sample_indices_gn(critic_state.params, traj_batch, _rng, rank)
+
                             def select_grad_row(in_params, indices):
                                 grad = jax.grad(lambda params: critic_target_loss(params, traj_batch, targets))(in_params)
                                 grad_flat, _ = jax.flatten_util.ravel_pytree(grad)

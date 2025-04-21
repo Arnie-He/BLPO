@@ -15,13 +15,15 @@ module load python/3.11
 export PYTHONPATH=$(pwd):$PYTHONPATH
 source .venv/bin/activate
 ###### algo = {nystrom, nested, cg, ppo}
-###### task = {cartpole, acrobot}, {walker2d, humanoid, humanoidstandup, inverted_pendulum, inverted_double_pendulum, pusher, hopper, reacher}
+###### task = {cartpole, acrobot}, {$task, humanoid, humanoidstandup, inverted_pendulum, inverted_double_pendulum, pusher, hopper, reacher}
 
+task="walker2d" 
+group_ver="April21"
 
-# python main.py --task=walker2d --algo=nystrom --group_ver=April20
-# python main.py --task=walker2d --algo=ppo --group_ver=April20
-# python main.py --task=walker2d --algo=nested --group_ver=April20
-# python main.py --task=walker2d --algo=cg --group_ver=April20
-
-python main.py --task=walker2d --algo=nested --group_ver=criticp_April20
-# python main.py --task=walker2d --algo=cgcriticp --group_ver=criticp_April20
+python main.py --task=$task --algo=anneal_nystrom --group_ver=$group_ver
+python main.py --task=$task --algo=fixedratio_nystrom --group_ver=$group_ver
+python main.py --task=$task --algo=gn_nystrom --group_ver=$group_ver
+python main.py --task=$task --algo=nystrom --group_ver=$group_ver
+python main.py --task=$task --algo=ppo --group_ver=$group_ver
+python main.py --task=$task --algo=nested --group_ver=$group_ver
+python main.py --task=$task --algo=cg --group_ver=$group_ver

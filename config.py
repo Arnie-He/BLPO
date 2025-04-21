@@ -22,6 +22,7 @@ env_config = {
         "nested_updates": 10,
         "CLIP_F": 1.0,
         "IHVP_BOUND": 1.4,
+        "IHVP_ratio": 0.2,
 
         # Nystrom Config
         "nystrom_rank": 5,
@@ -52,6 +53,7 @@ env_config = {
         "nested_updates": 10,
         "CLIP_F": 0.8, # Was 1.16
         "IHVP_BOUND": 0.5, # WAS 2
+        "IHVP_ratio": 0.2,
 
         # Nystrom Config
         "nystrom_rank": 5,
@@ -85,6 +87,7 @@ env_config = {
         "nested_updates": 3,
         "CLIP_F": 0.84,
         "IHVP_BOUND": 0.8,
+        "IHVP_ratio": 0.2,
 
         # Nystrom Config
         "nystrom_rank": 5,
@@ -117,6 +120,7 @@ env_config = {
         "nested_updates": 3,
         "CLIP_F": 0.84,
         "IHVP_BOUND": 0.8,
+        "IHVP_ratio": 0.2,
 
         # Nystrom Config
         "nystrom_rank": 5,
@@ -149,6 +153,7 @@ env_config = {
         "nested_updates": 5,
         "CLIP_F": 0.8,
         "IHVP_BOUND": 1.0,
+        "IHVP_ratio": 0.2,
 
         # Nystrom Config
         "nystrom_rank": 5,
@@ -181,6 +186,7 @@ env_config = {
         "nested_updates": 7,
         "CLIP_F": 0.7,
         "IHVP_BOUND": 1.4,
+        "IHVP_ratio": 0.2,
 
         # Nystrom Config
         "nystrom_rank": 5,
@@ -213,6 +219,7 @@ env_config = {
         "nested_updates": 5,
         "CLIP_F": 0.5,
         "IHVP_BOUND": 1.0,
+        "IHVP_ratio": 0.2,
 
         # Nystrom Config
         "nystrom_rank": 5,
@@ -245,6 +252,7 @@ env_config = {
         "nested_updates": 3,
         "CLIP_F": 0.5,
         "IHVP_BOUND": 1.0,
+        "IHVP_ratio": 0.2,
 
         # Nystrom Config
         "nystrom_rank": 5,
@@ -277,6 +285,7 @@ env_config = {
         "nested_updates": 3,
         "CLIP_F": 0.5,
         "IHVP_BOUND": 1.0,
+        "IHVP_ratio": 0.2,
 
         # Nystrom Config
         "nystrom_rank": 5,
@@ -308,6 +317,7 @@ env_config = {
         "nested_updates": 3,
         "CLIP_F": 0.5,
         "IHVP_BOUND": 1.0,
+        "IHVP_ratio": 0.2,
 
         # Nystrom Config
         "nystrom_rank": 5,
@@ -339,6 +349,7 @@ env_config = {
         "nested_updates": 3,
         "CLIP_F": 0.5,
         "IHVP_BOUND": 1.0,
+        "IHVP_ratio": 0.2,
 
         # Nystrom Config
         "nystrom_rank": 5,

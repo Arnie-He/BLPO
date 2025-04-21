@@ -5,7 +5,7 @@ import os
 import numpy as np
 import wandb
 
-from BiLevel_RL.continuous import CG, nested, nystrom
+from BiLevel_RL.continuous import CG, nested, nystrom, gn_nystrom, fixedratio_nystrom, anneal_nystrom
 from BiLevel_RL.discrete import dis_CG, dis_nested, dis_nystrom
 from Baselines import PJax_PPO_continuous, pure_env_continuous, PJax_PPO
 from config import env_config
@@ -53,8 +53,9 @@ def main():
             "ppo": PJax_PPO_continuous,
             # "env": pure_env_continuous,
             "nystrom": nystrom,
-            "nystromcriticp": nystrom_criticp,
-            "cgcriticp": cgcriticp,
+            "gn_nystrom": gn_nystrom,
+            "fixedratio_nystrom": fixedratio_nystrom, 
+            "anneal_nystrom": anneal_nystrom,
         }
 
     algo = algos[args.algo]

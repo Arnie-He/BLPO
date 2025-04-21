@@ -92,7 +92,7 @@ def make_train(config):
         ################################ Start Training ##########################
         # TRAIN LOOP
         def _update_step(runner_state, unused):
-
+            actor_state, critic_state, env_state, last_obs, rng, step = runner_state
             # COLLECT TRAJECTORIES
             def _env_step(runner_state, unused):
                 actor_state, critic_state, env_state, last_obs, rng = runner_state
@@ -117,6 +117,7 @@ def make_train(config):
                 runner_state = (actor_state, critic_state, env_state, obsv, rng)
                 return runner_state, transition
 
+            runner_state = (actor_state, critic_state, env_state, last_obs, rng)
             runner_state, traj_batch = jax.lax.scan(
                 _env_step, runner_state, None, config["NUM_STEPS"]
             )
@@ -156,7 +157,7 @@ def make_train(config):
             # UPDATE NETWORK
             def _update_epoch(update_state, unused):
                 def _update_minbatch(train_state, batch_info):
-                    actor_state, critic_state, rng = train_state 
+                    actor_state, critic_state, rng, step = train_state 
                     traj_batch, advantages, targets, last_obs = batch_info
 
                     ############ Define loss functions ##############
@@ -246,10 +247,14 @@ def make_train(config):
                         )
 
                         # bound the final_product
+                        def get_decay_value(t, N=config["NUM_UPDATES"], start=config["IHVP_BOUND"], end=0.15, alpha=1.0):
+                            frac = (t / (N - 1)) ** alpha
+                            return start * (end / start) ** frac
+                        
                         grad_theta_J_norm = optax.global_norm(grad_theta_J)
                         final_product_norm = optax.global_norm(final_product)
                         original_ratio = final_product_norm / grad_theta_J_norm
-                        max_norm = config["IHVP_BOUND"] * grad_theta_J_norm
+                        max_norm = get_decay_value(step) * grad_theta_J_norm
                         scaling_factor = jnp.minimum(1.0, max_norm/(final_product_norm + 1e-8))
                         clipped_final_product = jax.tree_util.tree_map(lambda fp: fp * scaling_factor, final_product)
 
@@ -266,7 +271,7 @@ def make_train(config):
 
                     return train_state, loss_info
                 
-                actor_state, critic_state, traj_batch, advantages, targets, rng = update_state
+                actor_state, critic_state, traj_batch, advantages, targets, rng, step = update_state
 
                 rng, _rng = jax.random.split(rng)
 
@@ -282,26 +287,26 @@ def make_train(config):
                     lambda x: jnp.take(x, permutation, axis=0), batch
                 )
 
-                train_state = (actor_state, critic_state, rng)
+                train_state = (actor_state, critic_state, rng, step)
                 train_state, loss_info = jax.lax.scan(
                     _update_minbatch, train_state, minibatches
                 )
                 
                 # Prepare carried trainstate
-                actor_state, critic_state, rng = train_state
-                update_state = (actor_state, critic_state, traj_batch, advantages, targets, _rng)
+                actor_state, critic_state, rng, step = train_state
+                update_state = (actor_state, critic_state, traj_batch, advantages, targets, _rng, step)
 
                 return update_state, loss_info
             
             # Updating Training State and Metrics:
-            update_state = (actor_state, critic_state, traj_batch, advantages, targets, rng)
+            update_state = (actor_state, critic_state, traj_batch, advantages, targets, rng, step)
             update_state, loss_info = jax.lax.scan(
                 _update_epoch, update_state, None, config["UPDATE_EPOCHS"]
             )
             actor_state = update_state[0]
             critic_state = update_state[1]
             metric = traj_batch.info
-            rng = update_state[-1]
+            rng = update_state[-2]
 
             # Can add printing statement here.
             if config.get("DEBUG"):
@@ -312,11 +317,11 @@ def make_train(config):
                         print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                 jax.debug.callback(callback, metric)
 
-            runner_state = (actor_state, critic_state, env_state, last_obs, rng)
+            runner_state = (actor_state, critic_state, env_state, last_obs, rng, step + 1)
             return runner_state, (metric, loss_info)
 
         rng, _rng = jax.random.split(rng)
-        runner_state = (actor_state, critic_state, env_state, obsv, _rng)
+        runner_state = (actor_state, critic_state, env_state, obsv, _rng, 0)
         runner_state, combined_metric = jax.lax.scan(
             _update_step, runner_state, None, config["NUM_UPDATES"]
         )
