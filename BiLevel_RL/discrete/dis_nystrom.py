@@ -195,7 +195,7 @@ def make_train(config):
 
                         values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, transitions.obs)
                         
-                        return 2 * jnp.mean((targets - values) * ppo_losses)
+                        return 2 * jnp.dot((targets - values), ppo_losses)
 
                     ### Update the critic state for several epoch ###
                     for _ in range(config["nested_updates"]):
@@ -301,9 +301,6 @@ def make_train(config):
                     for t in range(len(timesteps)):
                         print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                 jax.debug.callback(callback, metric)
-
-            runner_state = (actor_state, critic_state, env_state, last_obs, rng)
-            return runner_state, (metric, loss_info)
 
             runner_state = (actor_state, critic_state, env_state, last_obs, rng)
             return runner_state, metric

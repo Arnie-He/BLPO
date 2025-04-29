@@ -151,8 +151,10 @@ def make_train(config):
                     traj_batch, advantages, targets, last_obs = batch_info
 
                     ############ Define loss functions ##############
-                    def ppo_loss(actor_params, transitions, advantages):
+                    def ppo_loss(actor_params, critic_params, transitions):
                         """Calculates the clipped advantage estimator on a batch of transitions."""
+                        advantages, _ = calculate_gae(critic_params, transitions, last_obs)
+
                         action_dists = jax.vmap(actor_network.apply, in_axes=(None, 0))(actor_params, transitions.obs)
                         log_probs = action_dists.log_prob(transitions.action)
                         prob_ratios = jnp.exp(log_probs - transitions.log_prob)
@@ -177,7 +179,7 @@ def make_train(config):
                         critic_state = critic_state.apply_gradients(grads=critic_grad)
                     
                     ### update actor for 1 times ###
-                    actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, traj_batch, advantages)
+                    actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_state.params, traj_batch)
                     actor_state = actor_state.apply_gradients(grads=grad_theta_J)
                     
                     total_loss = actor_loss + critic_loss
@@ -226,9 +228,6 @@ def make_train(config):
                     for t in range(len(timesteps)):
                         print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                 jax.debug.callback(callback, metric)
-
-            runner_state = (actor_state, critic_state, env_state, last_obs, rng)
-            return runner_state, (metric, loss_info)
 
             runner_state = (actor_state, critic_state, env_state, last_obs, rng)
             return runner_state, metric

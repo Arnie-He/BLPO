@@ -14,9 +14,9 @@ env_config = {
         "ENT_COEF": 0.0,
         "VF_COEF": 0.5,
         "ACTIVATION": "tanh",
-        "ANNEAL_LR": False, 
+        "ANNEAL_LR": True, 
         "NORMALIZE_ENV": True,
-        "DEBUG": True,
+        "DEBUG": False,
 
         # Nested Config
         "nested_updates": 10,
@@ -47,7 +47,7 @@ env_config = {
         "ACTIVATION": "tanh",
         "ANNEAL_LR": False, 
         "NORMALIZE_ENV": True,
-        "DEBUG": True,
+        "DEBUG": False,
 
         # Nested Config
         "nested_updates": 10,
