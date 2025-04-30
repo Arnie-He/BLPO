@@ -30,11 +30,11 @@ def main():
 
     shared_config = env_config[args.task]
     if(args.algo == "ppo"):
-        algo_config = shared_config |  {"LR": 3e-4} 
+        algo_config = shared_config |  {"LR": 3e-4} # {"LR": 2.5e-4} 
     else:
         algo_config = shared_config | {
-            "actor-LR": 3e-4,
-            "critic-LR" : 1.2e-3,
+            "actor-LR":3e-4, #2.5e-4,
+            "critic-LR" : 1.2e-3 #1.0e-3,
         }
     
     assert (args.task in dis_tasks or args.task in continuous_tasks), f"{args.task} not in available tasks."

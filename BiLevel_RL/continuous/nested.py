@@ -135,6 +135,7 @@ def make_train(config):
             actor_state, critic_state, env_state, last_obs, rng = runner_state
             advantages, targets = calculate_gae(critic_state.params, traj_batch, last_obs)
 
+
             # UPDATE NETWORK
             def _update_epoch(update_state, unused):
                 def _update_minbatch(train_state, batch_info):
@@ -142,8 +143,9 @@ def make_train(config):
                     traj_batch, advantages, targets, last_obs = batch_info
 
                     ############ Define loss functions ##############
-                    def ppo_loss(actor_params, transitions):
+                    def ppo_loss(actor_params, critic_params, transitions):
                         """Calculates the clipped advantage estimator on a batch of transitions."""
+                        advantages, _ = calculate_gae(critic_params, traj_batch, last_obs)
                         action_dists = actor_network.apply(actor_params, transitions.obs)
                         log_probs = action_dists.log_prob(transitions.action)
 
@@ -167,7 +169,7 @@ def make_train(config):
                         critic_state = critic_state.apply_gradients(grads=critic_grad)
                     
                     ### update actor for 1 times ###
-                    actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, traj_batch)
+                    actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_state.params, traj_batch)
                     actor_state = actor_state.apply_gradients(grads=grad_theta_J)
                     
                     total_loss = actor_loss + critic_loss

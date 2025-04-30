@@ -29,7 +29,7 @@ env_config = {
         "nystrom_rho": 50,
 
         # CG Config
-        "lambda_reg": 0.1,
+        "lambda_reg": 0.0,
     },
     "acrobot": {
         "TOTAL_TIMESTEPS": 5e5,
@@ -60,7 +60,7 @@ env_config = {
         "nystrom_rho": 50,
 
         # CG Config
-        "lambda_reg": 0.1,
+        "lambda_reg": 0.0,
     },
 
     # 1
@@ -85,8 +85,8 @@ env_config = {
         
         # Nested Config
         "nested_updates": 3,
-        "CLIP_F": 0.84,
-        "IHVP_BOUND": 0.8,
+        "CLIP_F": 0.5,
+        "IHVP_BOUND": 1.,
         "IHVP_ratio": 0.2,
 
         # Nystrom Config
@@ -94,7 +94,7 @@ env_config = {
         "nystrom_rho": 50,
 
         # CG Config
-        "lambda_reg": 0.1,
+        "lambda_reg": 0.0,
     },
     # 2
     "hopper": {
@@ -118,8 +118,8 @@ env_config = {
         
         # Nested Config
         "nested_updates": 3,
-        "CLIP_F": 0.84,
-        "IHVP_BOUND": 0.8,
+        "CLIP_F": 0.5,
+        "IHVP_BOUND": 1.,
         "IHVP_ratio": 0.2,
 
         # Nystrom Config
@@ -127,7 +127,7 @@ env_config = {
         "nystrom_rho": 50,
 
         # CG Config
-        "lambda_reg": 0.1,
+        "lambda_reg": 0.0,
     },
     # 3
     "humanoid": {
@@ -150,9 +150,9 @@ env_config = {
         "DEBUG": False,
         
         # Nested Config
-        "nested_updates": 5,
-        "CLIP_F": 0.8,
-        "IHVP_BOUND": 1.0,
+        "nested_updates": 3,
+        "CLIP_F": 0.5,
+        "IHVP_BOUND": 1.,
         "IHVP_ratio": 0.2,
 
         # Nystrom Config
@@ -160,7 +160,7 @@ env_config = {
         "nystrom_rho": 50,
 
         # CG Config
-        "lambda_reg": 0.1,
+        "lambda_reg": 0.0,
     },
     # 4
     "halfcheetah": {
@@ -183,9 +183,9 @@ env_config = {
         "DEBUG": False,
         
         # Nested Config
-        "nested_updates": 7,
-        "CLIP_F": 0.7,
-        "IHVP_BOUND": 1.4,
+        "nested_updates": 3,
+        "CLIP_F": 0.5,
+        "IHVP_BOUND": 1.,
         "IHVP_ratio": 0.2,
 
         # Nystrom Config
@@ -193,7 +193,7 @@ env_config = {
         "nystrom_rho": 50,
 
         # CG Config
-        "lambda_reg": 0.1,
+        "lambda_reg": 0.0,
     },
     # 5
     "humanoidstandup": {
@@ -216,9 +216,9 @@ env_config = {
         "DEBUG": False,
         
         # Nested Config
-        "nested_updates": 5,
+        "nested_updates": 3,
         "CLIP_F": 0.5,
-        "IHVP_BOUND": 1.0,
+        "IHVP_BOUND": 1.,
         "IHVP_ratio": 0.2,
 
         # Nystrom Config
@@ -226,7 +226,7 @@ env_config = {
         "nystrom_rho": 50,
 
         # CG Config
-        "lambda_reg": 0.1,
+        "lambda_reg": 0.0,
     },
     # 6
     "pusher": {
@@ -251,7 +251,7 @@ env_config = {
         # Nested Config
         "nested_updates": 3,
         "CLIP_F": 0.5,
-        "IHVP_BOUND": 1.0,
+        "IHVP_BOUND": 1.,
         "IHVP_ratio": 0.2,
 
         # Nystrom Config
@@ -259,7 +259,7 @@ env_config = {
         "nystrom_rho": 50,
 
         # CG Config
-        "lambda_reg": 0.1,
+        "lambda_reg": 0.0,
     },
     # 7
     "inverted_double_pendulum": {
@@ -284,7 +284,7 @@ env_config = {
         # Nested Config
         "nested_updates": 3,
         "CLIP_F": 0.5,
-        "IHVP_BOUND": 1.0,
+        "IHVP_BOUND": 1.,
         "IHVP_ratio": 0.2,
 
         # Nystrom Config
@@ -292,7 +292,7 @@ env_config = {
         "nystrom_rho": 50,
 
         # CG Config
-        "lambda_reg": 0.1,
+        "lambda_reg": 0.0,
     },
     # 8
     "inverted_pendulum": {
@@ -317,7 +317,7 @@ env_config = {
         # Nested Config
         "nested_updates": 3,
         "CLIP_F": 0.5,
-        "IHVP_BOUND": 1.0,
+        "IHVP_BOUND": 1.,
         "IHVP_ratio": 0.2,
 
         # Nystrom Config
@@ -325,7 +325,7 @@ env_config = {
         "nystrom_rho": 50,
 
         # CG Config
-        "lambda_reg": 0.1,
+        "lambda_reg": 0.0,
     },
     # 9
     "reacher": {
@@ -350,7 +350,7 @@ env_config = {
         # Nested Config
         "nested_updates": 3,
         "CLIP_F": 0.5,
-        "IHVP_BOUND": 1.0,
+        "IHVP_BOUND": 1.,
         "IHVP_ratio": 0.2,
 
         # Nystrom Config
@@ -358,6 +358,6 @@ env_config = {
         "nystrom_rho": 50,
 
         # CG Config
-        "lambda_reg": 0.1,
+        "lambda_reg": 0.0,
     },
 }
