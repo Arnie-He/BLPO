@@ -182,17 +182,22 @@ def make_train(config):
                         clipped_losses = clipped_ratios * advantages
                         losses = jnp.minimum(unclipped_losses, clipped_losses)
 
-                        def _get_cummulate(carry, loss):
-                            length, total = carry
-                            length += 1
-                            total += loss
-                            return (length, total), - total / length
+                        # def _get_cummulate(carry, loss):
+                        #     length, total = carry
+                        #     length += 1
+                        #     total += loss
+                        #     return (length, total), - total / length
 
-                        _, ppo_losses = jax.lax.scan(_get_cummulate, (0, 0.0), losses)
+                        #_, ppo_losses = jax.lax.scan(_get_cummulate, (0, 0.0), losses)
+
+                        cumulative_sum = jnp.cumulative_sum(losses) # (best so far)
+                        indices = jnp.arange(1, len(losses) + 1)
+                        ppo_losses = -cumulative_sum / indices
+
 
                         values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, transitions.obs)
                         
-                        return 2 * jnp.mean((targets - values) * ppo_losses)
+                        return 2 * jnp.dot((targets - values), ppo_losses)
 
                     ### Update the critic state for several epoch ###
                     for _ in range(config["nested_updates"]):
@@ -289,7 +294,7 @@ def make_train(config):
                 jax.debug.callback(callback, metric)
 
             runner_state = (actor_state, critic_state, env_state, last_obs, rng)
-            return runner_state, (metric, loss_info)
+            return runner_state, metric
 
             runner_state = (actor_state, critic_state, env_state, last_obs, rng)
             return runner_state, metric

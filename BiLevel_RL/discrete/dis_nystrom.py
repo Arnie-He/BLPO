@@ -147,7 +147,7 @@ def make_train(config):
             # UPDATE NETWORK
             def _update_epoch(update_state, unused):
                 def _update_minbatch(train_state, batch_info):
-                    actor_state, critic_state = train_state 
+                    actor_state, critic_state, rng = train_state 
                     traj_batch, advantages, targets, last_obs = batch_info
 
                     ############ Define loss functions ##############
@@ -185,17 +185,21 @@ def make_train(config):
                         clipped_losses = clipped_ratios * advantages
                         losses = jnp.minimum(unclipped_losses, clipped_losses)
 
-                        def _get_cummulate(carry, loss):
-                            length, total = carry
-                            length += 1
-                            total += loss
-                            return (length, total), - total / length
+                        # def _get_cummulate(carry, loss):
+                        #     length, total = carry
+                        #     length += 1
+                        #     total += loss
+                        #     return (length, total), - total / length
 
-                        _, ppo_losses = jax.lax.scan(_get_cummulate, (0, 0.0), losses)
+                        # _, ppo_losses = jax.lax.scan(_get_cummulate, (0, 0.0), losses)
+
+                        cumulative_sum = jnp.cumulative_sum(losses) # (best so far)
+                        indices = jnp.arange(1, len(losses) + 1)
+                        ppo_losses = -cumulative_sum / indices
 
                         values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, transitions.obs)
                         
-                        return 2 * jnp.mean((targets - values) * ppo_losses)
+                        return 2 * jnp.dot((targets - values), ppo_losses)
 
                     ### Update the critic state for several epoch ###
                     for _ in range(config["nested_updates"]):
@@ -204,14 +208,50 @@ def make_train(config):
 
                     ### update actor for 1 time ###
                     actor_loss, grad_theta_J = jax.value_and_grad(ppo_loss)(actor_state.params, critic_state.params, traj_batch)
-                    def hypergrad():
+
+                    def compute_gn_diag_square(params, traj_batch):
+                        """
+                        Exact Gauss–Newton diagonal for the critic's scalar value network:
+                            diag_i = Σ_j (∂_{φ_i} f(obs_j; φ))²
+                        """
+                        # Per‑example gradient ∇_φ f(x_j)
+                        def per_sample_grad(obs):
+                            return jax.grad(lambda p: critic_network.apply(p, obs))(params)
+
+                        per_ex_grads = jax.vmap(per_sample_grad)(traj_batch.obs)   # leading batch axis
+
+                        # Square then sum over batch
+                        sq      = jax.tree_map(lambda g: jnp.square(g), per_ex_grads)
+                        diag_pt = jax.tree_map(lambda g: jnp.sum(g, axis=0), sq)
+
+                        # Flatten into a 1‑D vec
+                        diag_flat, _ = jax.flatten_util.ravel_pytree(diag_pt)
+
+                        #sqaure the elements of the diag_flat
+                        diag_flat_2 = jnp.square(diag_flat)
+                        return diag_flat_2        # shape (P,)
+
+
+                    def sample_indices_gn(params, traj_batch, rng, rank):
+                        diag_flat = compute_gn_diag_square(params, traj_batch)
+                        probs     = jnp.square(diag_flat)
+                        probs    /= jnp.sum(probs) + 1e-12           # guard against NaN
+                        return jax.random.choice(rng,
+                                                diag_flat.shape[0],
+                                                (rank,),
+                                                p=probs)
+
+
+                    def hypergrad(_rng):
                         _, unflatten_fn = jax.flatten_util.ravel_pytree(critic_state.params)
                         """Time-efficient Nystrom"""
                         def nystrom_hvp(rank, rho):
                             # Use critic_p or critic_state.params?
                             in_out_g = jax.grad(ppo_loss, argnums=1)(actor_state.params, critic_state.params, traj_batch)
                             param_size = sum(x.size for x in jax.tree_util.tree_leaves(critic_state.params))
-                            indices = jax.random.permutation(jax.random.PRNGKey(0), param_size)[:rank]
+                            #indices = jax.random.permutation(jax.random.PRNGKey(0), param_size)[:rank]
+                            indices = jax.random.permutation(_rng, param_size)[:rank]
+                            #indices = sample_indices_gn(critic_state.params, traj_batch, _rng, rank)
                             def select_grad_row(in_params, indices):
                                 grad = jax.grad(lambda params: critic_target_loss(params, traj_batch, targets))(in_params)
                                 grad_flat, _ = jax.flatten_util.ravel_pytree(grad)
@@ -252,11 +292,12 @@ def make_train(config):
                         co_sim = cosine_similarity(final_product, grad_theta_J)
                         return (hypergradient, hypergradient_norms, final_product_norms, co_sim)
                     
-                    total_gradient, hypergradient_norms, final_product_norms, co_sim = hypergrad()
+                    rng, _rng = jax.random.split(rng)   
+                    total_gradient, hypergradient_norms, final_product_norms, co_sim = hypergrad(_rng)
                     actor_state = actor_state.apply_gradients(grads=total_gradient)
 
                     total_loss = actor_loss + critic_loss
-                    train_state = (actor_state, critic_state)
+                    train_state = (actor_state, critic_state, rng)
                     return train_state, total_loss
                 
                 actor_state, critic_state, traj_batch, advantages, targets, rng = update_state
@@ -275,11 +316,11 @@ def make_train(config):
                     lambda x: jnp.take(x, permutation, axis=0), batch
                 )
 
-                train_state = (actor_state, critic_state)
+                train_state = (actor_state, critic_state, rng)
                 train_state, total_loss = jax.lax.scan(
                     _update_minbatch, train_state, minibatches
                 )
-                actor_state, critic_state = train_state
+                actor_state, critic_state, rng = train_state
                 update_state = (actor_state, critic_state, traj_batch, advantages, targets, rng)
                 return update_state, total_loss
             
@@ -301,9 +342,6 @@ def make_train(config):
                     for t in range(len(timesteps)):
                         print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                 jax.debug.callback(callback, metric)
-
-            runner_state = (actor_state, critic_state, env_state, last_obs, rng)
-            return runner_state, (metric, loss_info)
 
             runner_state = (actor_state, critic_state, env_state, last_obs, rng)
             return runner_state, metric

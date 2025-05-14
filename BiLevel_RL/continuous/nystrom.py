@@ -182,7 +182,7 @@ def make_train(config):
                         errors = jnp.square(targets - values)
                         return jnp.mean(errors)
                     
-                    #arnie new loss
+                    #arnie new loss (use this one!)
                     def leader_f2_loss(actor_params, critic_params, transitions, targets):
                         advantages, _ = calculate_gae(critic_params, transitions, last_obs)
 
@@ -194,13 +194,32 @@ def make_train(config):
                         clipped_ratios = jnp.clip(prob_ratios, 1 - config["CLIP_F"], 1 + config["CLIP_F"])
                         clipped_losses = clipped_ratios * advantages
                         losses = jnp.minimum(unclipped_losses, clipped_losses)
+                        
+                        # def _get_cummulate(carry, loss):
+                        #     length, total = carry
+                        #     length += 1
+                        #     total += loss
+                        #     return (length, total), - total / length
+                        # _, ppo_losses = jax.lax.scan(_get_cummulate, (0, 0.0), losses)
 
-                        def _get_cummulate(carry, loss):
-                            length, total = carry
-                            length += 1
-                            total += loss
-                            return (length, total), - total / length
-                        _, ppo_losses = jax.lax.scan(_get_cummulate, (0, 0.0), losses)
+                        #cumulative_sum = jnp.cumsum(losses)
+                       # cumulative_sum = jnp.cumulative_sum(losses) # (best so far)
+                        #cumulative_sum = jax.lax.cumsum(losses)
+                        #cumulative_sum = jnp.add.accumulate(losses)
+
+
+
+                        
+                        # indices = jnp.arange(1, len(losses) + 1)
+                        # ppo_losses = jnp.divide(-cumulative_sum, indices)
+
+                        original_dtype = losses.dtype
+                        losses_f64 = losses.astype(jnp.float64)
+                        cumulative_sum_f64 = jnp.cumsum(losses_f64)
+                        indices_f64 = jnp.arange(1, len(losses) + 1, dtype=jnp.float64)
+                        ppo_losses_f64 = -cumulative_sum_f64 / indices_f64
+                        ppo_losses = ppo_losses_f64.astype(original_dtype)
+
 
                         values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, transitions.obs)
                         

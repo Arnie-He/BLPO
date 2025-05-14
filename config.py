@@ -11,7 +11,7 @@ env_config = {
         "GAMMA": 0.99,
         "GAE_LAMBDA": 0.95,
         "CLIP_EPS": 0.2,
-        "ENT_COEF": 0.0,
+        "ENT_COEF": 0.01,
         "VF_COEF": 0.5,
         "ACTIVATION": "tanh",
         "ANNEAL_LR": False, 
@@ -19,10 +19,11 @@ env_config = {
         "DEBUG": True,
 
         # Nested Config
-        "nested_updates": 10,
-        "CLIP_F": 1.0,
-        "IHVP_BOUND": 1.4,
+        "nested_updates": 5,
+        "CLIP_F": 0.5,
+        "IHVP_BOUND": 1.,
         "IHVP_ratio": 0.2,
+
 
         # Nystrom Config
         "nystrom_rank": 5,
@@ -42,7 +43,7 @@ env_config = {
         "GAMMA": 0.99,
         "GAE_LAMBDA": 0.95,
         "CLIP_EPS": 0.2,
-        "ENT_COEF": 0.0,
+        "ENT_COEF": 0.01,
         "VF_COEF": 0.5,
         "ACTIVATION": "tanh",
         "ANNEAL_LR": False, 
@@ -50,9 +51,9 @@ env_config = {
         "DEBUG": True,
 
         # Nested Config
-        "nested_updates": 10,
-        "CLIP_F": 0.8, # Was 1.16
-        "IHVP_BOUND": 0.5, # WAS 2
+        "nested_updates": 5,
+        "CLIP_F": 0.5,
+        "IHVP_BOUND": 1.,
         "IHVP_ratio": 0.2,
 
         # Nystrom Config

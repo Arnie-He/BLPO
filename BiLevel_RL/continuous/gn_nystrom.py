@@ -198,13 +198,17 @@ def make_train(config):
                         clipped_losses = clipped_ratios * advantages
                         losses = jnp.minimum(unclipped_losses, clipped_losses)
 
-                        def _get_cummulate(carry, loss):
-                            length, total = carry
-                            length += 1
-                            total += loss
-                            return (length, total), - total / length
+                        # def _get_cummulate(carry, loss):
+                        #     length, total = carry
+                        #     length += 1
+                        #     total += loss
+                        #     return (length, total), - total / length
 
-                        _, ppo_losses = jax.lax.scan(_get_cummulate, (0, 0.0), losses)
+                        # _, ppo_losses = jax.lax.scan(_get_cummulate, (0, 0.0), losses)
+
+                        cumulative_sum = jnp.cumulative_sum(losses)
+                        indices = jnp.arange(1, len(losses) + 1)
+                        ppo_losses = -cumulative_sum / indices
 
                         values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, transitions.obs)
                         
