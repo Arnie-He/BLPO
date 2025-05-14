@@ -195,13 +195,19 @@ def make_train(config):
                         clipped_losses = clipped_ratios * advantages
                         losses = jnp.minimum(unclipped_losses, clipped_losses)
 
-                        def _get_cummulate(carry, loss):
-                            length, total = carry
-                            length += 1
-                            total += loss
-                            return (length, total), - total / length
+                        # def _get_cummulate(carry, loss):
+                        #     length, total = carry
+                        #     length += 1
+                        #     total += loss
+                        #     return (length, total), - total / length
 
-                        _, ppo_losses = jax.lax.scan(_get_cummulate, (0, 0.0), losses)
+                        # _, ppo_losses = jax.lax.scan(_get_cummulate, (0, 0.0), losses)
+                        original_dtype = losses.dtype
+                        losses_f64 = losses.astype(jnp.float64)
+                        cumulative_sum_f64 = jnp.cumsum(losses_f64)
+                        indices_f64 = jnp.arange(1, len(losses) + 1, dtype=jnp.float64)
+                        ppo_losses_f64 = -cumulative_sum_f64 / indices_f64
+                        ppo_losses = ppo_losses_f64.astype(original_dtype)
 
                         values = jax.vmap(critic_network.apply, in_axes=(None, 0))(critic_params, transitions.obs)
                         
@@ -209,73 +215,7 @@ def make_train(config):
                         return 2 * jnp.dot((targets - values), ppo_losses)
 
 
-                     #ap-loss
-                    # def leader_f2_loss(
-                    #                             actor_params,
-                    #                             critic_params,
-                    #                             transitions,
-                    #                             targets,
-                    #     ):
-                    #         """
-                    #         Calculates a surrogate scalar loss whose gradient w.r.t. actor_params
-                    #         approximates E[(V_target - V_omega) * A(s,a) * grad log pi_theta(a|s)].
-
-                    #         This corrects the previous 'leader_f2_loss' to match the derived
-                    #         surrogate loss structure.
-
-                    #         Args:
-                    #             actor_params: Parameters of the actor network.
-                    #             critic_params: Parameters of the critic network (treated as fixed for this grad).
-                    #             transitions: Batch of transitions data (must contain obs, action).
-                    #             targets: Target values for the critic (e.g., GAE targets V_target(s)).
-                    #                     Shape should match transitions batch size.
-                    #             last_obs: The last observation needed for GAE if bootstrapping.
-                    #             config: Configuration dictionary (optional).
-
-                    #         Returns:
-                    #             A scalar loss value.
-                    #         """
-
-                    #         # 1. Calculate Advantages A(s,a) using the critic
-                    #         # Treat critic params as fixed when calculating advantages for this loss's gradient
-                    #         advantages, _ = calculate_gae(jax.lax.stop_gradient(critic_params), transitions, last_obs)
-                    #         # Ensure advantages are treated as constant scaling factors for the gradient
-                    #         advantages = jax.lax.stop_gradient(advantages)
-
-                    #         # 2. Calculate V_omega(s) using the critic
-                    #         # Treat critic params as fixed
-                    #         values = critic_network.apply(jax.lax.stop_gradient(critic_params), transitions.obs)
-                    #         values = jax.lax.stop_gradient(values) # V_omega(s)
-
-                    #         # 3. Calculate the approximate error term: V_target - V_omega
-                    #         # Targets are precomputed/passed in and treated as constant.
-                    #         value_error = jax.lax.stop_gradient(targets) - values
-
-                    #         # 4. Calculate the combined weight W = Error * Advantage
-                    #         # This weight scales the policy gradient term.
-                    #         weights = value_error * advantages
-
-                    #         # 5. Stop the gradient from flowing through the weights.
-                    #         # The weights determine the *magnitude and sign* of the gradient applied to log_probs,
-                    #         # but we don't want to differentiate the weights themselves w.r.t. actor_params here.
-                    #         stopped_weights = jax.lax.stop_gradient(weights)
-
-                    #         # 6. Calculate log pi_theta(a|s) for actions taken, using current actor_params
-                    #         # This is the term through which the gradient w.r.t. actor_params will flow.
-                    #         action_dists = actor_network.apply(actor_params, transitions.obs)
-                    #         log_probs = action_dists.log_prob(transitions.action) # log pi_theta(a|s)
-
-                    #         # 7. Calculate the final loss: mean( weight * log_prob )
-                    #         # The gradient of this loss w.r.t actor_params will be:
-                    #         # mean( stopped_weights * grad(log_probs) )
-                    #         # = mean( (V_target - V_omega) * A * grad(log pi_theta) )
-                    #         # This matches our target approximation structure for Term 1.
-                    #         #loss = jnp.mean(stopped_weights * log_probs)
-                    #         loss = jnp.dot(stopped_weights, log_probs)
-
-                    #         # Note: Removed the factor of 2 and the negative sign from the user's
-                    #         # previous function, as they are not part of this specific surrogate loss derivation.
-                    #         return 2*loss
+                    
 
                     ### Update the critic state for several epochs ###
                     for _ in range(config["nested_updates"]):
