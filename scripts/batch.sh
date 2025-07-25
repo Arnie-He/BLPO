@@ -18,12 +18,14 @@ source .venv/bin/activate
 ###### task = {cartpole, acrobot}, {walker2d, humanoid, humanoidstandup, inverted_pendulum, inverted_double_pendulum, pusher, hopper, reacher}
 
 task="walker2d" 
-group_ver="April21"
+group_ver="Rebuttal"
 
-python main.py --task=$task --algo=anneal_nystrom --group_ver=$group_ver
-python main.py --task=$task --algo=fixedratio_nystrom --group_ver=$group_ver
-python main.py --task=$task --algo=gn_nystrom --group_ver=$group_ver
-python main.py --task=$task --algo=nystrom --group_ver=$group_ver
-python main.py --task=$task --algo=ppo --group_ver=$group_ver
-python main.py --task=$task --algo=nested --group_ver=$group_ver
-python main.py --task=$task --algo=cg --group_ver=$group_ver
+# python main.py --task=$task --algo=anneal_nystrom --group_ver=$group_ver
+# python main.py --task=$task --algo=fixedratio_nystrom --group_ver=$group_ver
+# python main.py --task=$task --algo=gn_nystrom --group_ver=$group_ver
+# python main.py --task=$task --algo=nystrom --group_ver=$group_ver
+# python main.py --task=$task --algo=ppo --group_ver=$group_ver
+# python main.py --task=$task --algo=nested --group_ver=$group_ver
+# python main.py --task=$task --algo=cg --group_ver=$group_ver
+
+python main.py --task=$task --algo=nystrom_preconditioned_cg --group_ver=$group_ver
