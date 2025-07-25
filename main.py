@@ -4,7 +4,7 @@ import jax
 import numpy as np
 import wandb
 from archive import cgcriticp, nystrom_criticp
-from BiLevel_RL.continuous import CG, nested, nystrom, gn_nystrom, fixedratio_nystrom, anneal_nystrom
+from BiLevel_RL.continuous import CG, nested, nystrom, gn_nystrom, fixedratio_nystrom, anneal_nystrom, nystrom_preconditioned_cg
 from BiLevel_RL.discrete import dis_CG, dis_nested, dis_nystrom
 from Baselines import PJax_PPO_continuous, PJax_PPO
 from config import env_config
@@ -54,6 +54,7 @@ def main():
             "gn_nystrom": gn_nystrom,
             "fixedratio_nystrom": fixedratio_nystrom,
             "anneal_nystrom": anneal_nystrom,
+            "nystrom_preconditioned_cg": nystrom_preconditioned_cg,
         }
 
     algo = algos[args.algo]
